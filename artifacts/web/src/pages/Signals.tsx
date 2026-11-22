@@ -5,6 +5,7 @@ import { useT, type Key } from "@/lib/i18n";
 import { time } from "@/lib/format";
 import { Alert, Badge, Button, Card, Empty, Input, Modal, Spinner, Switch, cx } from "@/components/ui";
 import { DEFAULT_PLAN, PlanEditor, planProblems, type Plan } from "@/components/terminal/PlanEditor";
+import { GridsSection } from "./Grids";
 
 type Settings = {
   amountMode: "usdt" | "percent"; amount: number; leverage: number; marginMode: "isolated" | "cross"; plan: Plan;
@@ -86,6 +87,8 @@ export function SignalsPage() {
           <TestBox bot={b} />
         </Card>
       ))}
+
+      <div className="pt-4"><GridsSection /></div>
 
       <h2 className="pt-2 text-sm font-semibold uppercase tracking-wide text-muted">{t("bots.recent")}</h2>
       <Card>

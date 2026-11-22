@@ -266,4 +266,25 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       ALTER TABLE vk_users ADD COLUMN IF NOT EXISTS totp_last_step bigint;
     `,
   },
+  {
+    id: 10,
+    name: "grid bots",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vk_grids (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        account_id bigint NOT NULL REFERENCES vk_exchange_accounts(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        settings jsonb NOT NULL,
+        status text NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'running', 'stopped', 'error')),
+        state jsonb,
+        stop_reason text,
+        last_error text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        started_at timestamptz,
+        stopped_at timestamptz
+      );
+      CREATE INDEX IF NOT EXISTS vk_grids_user ON vk_grids (user_id, id DESC);
+    `,
+  },
 ];

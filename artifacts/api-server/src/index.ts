@@ -7,6 +7,8 @@ import { notificationsRouter } from "./routes/notifications";
 import { tradeRouter } from "./routes/trade";
 import { managedRouter } from "./routes/managed";
 import { botsRouter, hookRouter } from "./routes/bots";
+import { gridsRouter } from "./routes/grids";
+import { startGridLoop } from "./engine/grid";
 import { startEngine } from "./engine/manager";
 import { clientFor } from "./exchanges/client";
 import { paperTick } from "./exchanges/paper";
@@ -31,6 +33,7 @@ app.use("/api/hook", hookRouter); // public webhook — before any signed-in rou
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/managed", managedRouter);
+app.use("/api/grids", gridsRouter);
 app.use("/api", accountsRouter);
 app.use("/api", tradeRouter);
 app.use("/api", botsRouter);
@@ -56,6 +59,7 @@ if (process.env.ACCOUNT_HEALTH_CHECKS !== "0") setInterval(() => void healthLoop
 // manage real positions next to the published one — the DB lock also prevents double handling).
 if (process.env.NODE_ENV === "production" ? process.env.ENGINE_ENABLED !== "0" : process.env.ENGINE_ENABLED === "1") {
   startEngine({ client: clientFor });
+  startGridLoop(clientFor);
   console.log("[engine] position manager started");
 }
 // Paper accounts: limit/stop orders and liquidations fire even when nobody is looking.
