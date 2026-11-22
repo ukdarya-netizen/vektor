@@ -1,0 +1,13 @@
+packages:
+  - artifacts/*
+
+autoInstallPeers: false
+
+# SECURITY: keep the one-day minimum release age for supply-chain safety.
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - '@replit/*'
+
+onlyBuiltDependencies:
+  - esbuild
+  - '@tailwindcss/oxide'
