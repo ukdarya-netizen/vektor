@@ -28,11 +28,13 @@ export const botsRouter = Router();
 botsRouter.use(requireUser);
 
 const PUBLIC = "id, account_id, name, token_hint, settings, enabled, created_at";
+const CHANNELS = "(SELECT coalesce(json_agg(json_build_object('chatId', c.chat_id, 'title', c.title)), '[]') FROM vk_bot_channels c WHERE c.bot_id = b.id) AS channels";
 
 botsRouter.get("/bots", async (req, res) => {
   const user = userOf(req);
   const bots = await q(`SELECT ${PUBLIC},
-      (SELECT count(*)::int FROM vk_signals s WHERE s.bot_id = b.id AND s.received_at > now() - interval '24 hours' AND NOT s.test) AS signals24h
+      (SELECT count(*)::int FROM vk_signals s WHERE s.bot_id = b.id AND s.received_at > now() - interval '24 hours' AND NOT s.test) AS signals24h,
+      ${CHANNELS}
     FROM vk_bots b WHERE user_id = $1 ORDER BY id`, [user.id]);
   res.json({ bots });
 });
@@ -90,6 +92,23 @@ botsRouter.post("/bots/:id/token", async (req, res) => {
     [Number(req.params.id), user.id, keyedHash(`bot:${token}`), `${token.slice(0, 4)}…`]);
   if (!row) { res.status(404).json({ error: "not_found" }); return; }
   res.json({ token });
+});
+
+/** Code to post once in a Telegram channel/group where the Vektor bot is added. */
+botsRouter.post("/bots/:id/telegram-link", async (req, res) => {
+  const user = userOf(req);
+  const bot = await one("SELECT id FROM vk_bots WHERE id = $1 AND user_id = $2", [Number(req.params.id), user.id]);
+  if (!bot) { res.status(404).json({ error: "not_found" }); return; }
+  const code = randomToken(8).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6).padEnd(6, "X");
+  await q("DELETE FROM vk_channel_link_codes WHERE bot_id = $1 OR expires_at < now()", [bot.id]);
+  await q("INSERT INTO vk_channel_link_codes (code, bot_id, expires_at) VALUES ($1, $2, now() + interval '15 minutes')", [code, bot.id]);
+  res.json({ code: `vektor-${code}`, bot: process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") ?? null, expiresInMin: 15 });
+});
+
+botsRouter.delete("/bots/:id/channels/:chatId", async (req, res) => {
+  const user = userOf(req);
+  await q("DELETE FROM vk_bot_channels c USING vk_bots b WHERE c.bot_id = b.id AND b.user_id = $1 AND b.id = $2 AND c.chat_id = $3", [user.id, Number(req.params.id), String(req.params.chatId)]);
+  res.json({ ok: true });
 });
 
 botsRouter.delete("/bots/:id", async (req, res) => {

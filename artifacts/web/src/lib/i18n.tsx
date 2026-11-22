@@ -473,6 +473,13 @@ const ru = {
   "grid.upper_below_lower": "Верхняя граница должна быть выше нижней",
   "grid.stop_lower_inside": "Нижний стоп должен быть ниже диапазона",
   "grid.stop_upper_inside": "Верхний стоп должен быть выше диапазона",
+  "ch.title": "Telegram-каналы",
+  "ch.none": "не подключены",
+  "ch.add": "+ Подключить канал или группу",
+  "ch.steps": "1. Добавьте @{bot} в канал администратором (в группу — участником; в группе отключите боту privacy в @BotFather или сделайте его админом).\n2. Опубликуйте в канале одно сообщение — код ниже (потом его можно удалить).\n3. Готово: каждый новый пост канала станет сигналом этого бота. Посты, не похожие на сигнал, просто записываются как «не разобран».",
+  "ch.code": "Код (действует 15 минут)",
+  "ch.limit": "Читать можно только каналы, куда бот добавлен. Чужой канал, где вы не админ, Telegram боту не покажет.",
+  "ch.remove": "Отключить",
 } as const;
 
 export type Key = keyof typeof ru;
@@ -948,6 +955,13 @@ const en: Record<Key, string> = {
   "grid.upper_below_lower": "The upper bound must be above the lower",
   "grid.stop_lower_inside": "The lower stop must be below the range",
   "grid.stop_upper_inside": "The upper stop must be above the range",
+  "ch.title": "Telegram channels",
+  "ch.none": "none linked",
+  "ch.add": "+ Link a channel or group",
+  "ch.steps": "1. Add @{bot} to the channel as an admin (to a group as a member; in a group turn the bot's privacy off in @BotFather or make it an admin).\n2. Post one message in the channel — the code below (you can delete it after).\n3. Done: every new post becomes a signal for this bot. Posts that don't look like a signal are just recorded as not understood.",
+  "ch.code": "Code (valid 15 minutes)",
+  "ch.limit": "Only channels the bot is added to can be read. Telegram won't show a bot someone else's channel where you are not an admin.",
+  "ch.remove": "Unlink",
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { ru, en };

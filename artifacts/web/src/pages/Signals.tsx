@@ -11,7 +11,7 @@ type Settings = {
   amountMode: "usdt" | "percent"; amount: number; leverage: number; marginMode: "isolated" | "cross"; plan: Plan;
   allowLong: boolean; allowShort: boolean; onOpposite: "skip" | "close" | "reverse"; onSame: "skip" | "add"; ttlSec: number; allowOverrides: boolean;
 };
-type Bot = { id: number; account_id: number; name: string; token_hint: string; settings: Settings; enabled: boolean; signals24h: number };
+type Bot = { id: number; account_id: number; name: string; token_hint: string; settings: Settings; enabled: boolean; signals24h: number; channels: Array<{ chatId: string; title: string | null }> };
 type Signal = { id: number; bot_id: number; bot_name: string; raw: string; status: string; reason: string | null; detail: any; test: boolean; received_at: string };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -84,6 +84,7 @@ export function SignalsPage() {
             </div>
           </div>
           <div className="mt-3 text-xs text-muted">{t("bots.hidden", { hint: b.token_hint })}</div>
+          <Channels bot={b} />
           <TestBox bot={b} />
         </Card>
       ))}
@@ -255,5 +256,31 @@ function BotEditor({ bot, accounts, onClose, onSaved }: { bot: Bot | null; accou
         <Button className="w-full" size="lg" onClick={save} disabled={busy || !name.trim() || !accountId || !(s.amount > 0) || bad}>{busy ? <Spinner /> : t("bots.save")}</Button>
       </div>
     </Modal>
+  );
+}
+
+function Channels({ bot }: { bot: Bot }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [link, setLink] = useState<{ code: string; bot: string | null } | null>(null);
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-muted">{t("ch.title")}:</span>
+      {bot.channels.length ? bot.channels.map((c) => (
+        <span key={c.chatId} className="flex items-center gap-1 rounded-md bg-panel-2 px-2 py-0.5">
+          {c.title ?? c.chatId}
+          <button className="text-muted hover:text-down" title={t("ch.remove")} onClick={async () => { await api(`/bots/${bot.id}/channels/${encodeURIComponent(c.chatId)}`, { method: "DELETE" }); void qc.invalidateQueries({ queryKey: ["bots"] }); }}>✕</button>
+        </span>
+      )) : <span className="text-muted">{t("ch.none")}</span>}
+      <button className="text-accent hover:underline" onClick={async () => setLink(await api(`/bots/${bot.id}/telegram-link`, { method: "POST" }))}>{t("ch.add")}</button>
+      {link && (
+        <Modal open onClose={() => { setLink(null); void qc.invalidateQueries({ queryKey: ["bots"] }); }} title={t("ch.title")}>
+          <div className="whitespace-pre-line text-sm">{t("ch.steps", { bot: link.bot ?? "Vektor bot" })}</div>
+          <div className="mt-4 text-sm text-muted">{t("ch.code")}</div>
+          <code className="mt-1 block rounded-lg border border-line bg-bg p-3 text-center font-mono text-lg">{link.code}</code>
+          <div className="mt-3 text-xs text-muted">{t("ch.limit")}</div>
+        </Modal>
+      )}
+    </div>
   );
 }

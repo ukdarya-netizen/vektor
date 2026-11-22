@@ -22,11 +22,43 @@ export async function createLink(userId: number): Promise<{ url: string; expires
   return { url: `https://t.me/${botUsername()}?start=${t}`, expiresInMin: LINK_TTL_MIN };
 }
 
-type Update = { update_id: number; message?: { text?: string; chat: { id: number; type: string }; from?: { username?: string; language_code?: string } } };
+type Msg = { text?: string; caption?: string; chat: { id: number; type: string; title?: string }; from?: { username?: string; language_code?: string } };
+type Update = { update_id: number; message?: Msg; channel_post?: Msg };
+
+/** A post in a channel/group: a link code, or a signal for every bot linked to this chat. */
+async function handleChatPost(m: Msg): Promise<void> {
+  const text = (m.text ?? m.caption ?? "").trim();
+  if (!text) return;
+  const chat = String(m.chat.id);
+  const code = text.match(/^vektor-([A-Z0-9]{6})$/i);
+  if (code) {
+    const row = await one<{ bot_id: number }>("DELETE FROM vk_channel_link_codes WHERE code = $1 AND expires_at > now() RETURNING bot_id", [code[1].toUpperCase()]);
+    if (!row) return;
+    await q("INSERT INTO vk_bot_channels (chat_id, bot_id, title) VALUES ($1, $2, $3) ON CONFLICT (chat_id, bot_id) DO UPDATE SET title = EXCLUDED.title", [chat, row.bot_id, m.chat.title ?? null]);
+    const owner = await one<{ user_id: number; name: string }>("SELECT user_id, name FROM vk_bots WHERE id = $1", [row.bot_id]);
+    if (owner) {
+      const l = await one<{ chat_id: string; lang: string }>("SELECT l.chat_id, u.lang FROM vk_telegram_links l JOIN vk_users u ON u.id = l.user_id WHERE l.user_id = $1", [owner.user_id]);
+      if (l) await enqueue(owner.user_id, l.chat_id, "linked", l.lang === "en" ? `✅ Bot ${owner.name} now reads signals from «${m.chat.title ?? chat}».` : `✅ Бот ${owner.name} теперь читает сигналы из «${m.chat.title ?? chat}».`);
+    }
+    return;
+  }
+  const bots = await q("SELECT b.* FROM vk_bots b JOIN vk_bot_channels c ON c.bot_id = b.id WHERE c.chat_id = $1", [chat]);
+  if (!bots.length) return;
+  const { botSettingsSchema, enqueueSignal, processSignal, receive } = await import("../signals/process");
+  for (const bot of bots) {
+    bot.settings = botSettingsSchema.parse(bot.settings);
+    const r = await receive(bot, text);
+    // Posts that are not signals (news, chatter) are recorded as rejected and nothing else happens.
+    if (r.duplicate || !r.parsed) continue;
+    void enqueueSignal(bot.id, () => processSignal(bot, r.id!, r.parsed!)).catch((e) => console.error("[signal]", e));
+  }
+}
 
 export async function handleUpdate(u: Update): Promise<void> {
+  if (u.channel_post) { await handleChatPost(u.channel_post); return; }
   const m = u.message;
-  if (!m?.text || m.chat.type !== "private") return;
+  if (m && m.chat.type !== "private") { await handleChatPost(m); return; }
+  if (!m?.text) return;
   const chat = String(m.chat.id);
   const lang = m.from?.language_code?.startsWith("ru") ? "ru" : "en";
   const [cmd, arg] = m.text.trim().split(/\s+/, 2);
@@ -59,7 +91,7 @@ export async function startPolling(): Promise<void> {
   console.log("[tg] polling started");
   for (;;) {
     try {
-      const res = await fetch(`https://api.telegram.org/bot${token()}/getUpdates?timeout=30&offset=${offset}&allowed_updates=["message"]`, {
+      const res = await fetch(`https://api.telegram.org/bot${token()}/getUpdates?timeout=30&offset=${offset}&allowed_updates=["message","channel_post"]`, {
         signal: AbortSignal.timeout(40_000),
       });
       const body = (await res.json()) as { ok: boolean; result?: Update[]; description?: string };

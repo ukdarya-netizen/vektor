@@ -75,5 +75,23 @@ test("link by deep link, notify, deliver in order, respect groups and 429", asyn
   assert.match(sent[3], /Позиция не открыта\.\nПричина: не хватает свободной маржи/);
 
   await q("DELETE FROM vk_users WHERE id = $1", [u.id]);
+});
+
+test("channel post: link code binds the chat, later posts become signals", async () => {
+  const u = (await one<{ id: number }>("INSERT INTO vk_users (email) VALUES ($1) RETURNING id", [`c${Date.now()}@x.io`]))!;
+  const a = (await one("INSERT INTO vk_exchange_accounts (user_id, exchange, label, market, env, credentials_enc, key_hint, withdraw_check) VALUES ($1,'bybit','B','swap','paper','x','x','verified_off') RETURNING id", [u.id]))!;
+  const bot = (await one("INSERT INTO vk_bots (user_id, account_id, name, token_hash, token_hint, settings) VALUES ($1,$2,'Chan',$3,'x',$4) RETURNING id",
+    [u.id, a.id, `h${Date.now()}`, JSON.stringify({ amount: 10, plan: { stop: { mode: "pct", value: 2 } } })]))!;
+  await q("INSERT INTO vk_channel_link_codes (code, bot_id, expires_at) VALUES ('ABC123', $1, now() + interval '5 minutes')", [bot.id]);
+  const chat = -100777000 - (u.id % 1000);
+  await handleUpdate({ update_id: 10, channel_post: { text: "vektor-abc123", chat: { id: chat, type: "channel", title: "Signals VIP" } } } as any);
+  assert.ok(await one("SELECT 1 FROM vk_bot_channels WHERE chat_id = $1 AND bot_id = $2", [String(chat), bot.id]));
+  await handleUpdate({ update_id: 11, channel_post: { text: "🟢 #BTC LONG\nTP1 70000\nSL 60000", chat: { id: chat, type: "channel" } } } as any);
+  await handleUpdate({ update_id: 12, channel_post: { text: "Всем хорошего дня!", chat: { id: chat, type: "channel" } } } as any);
+  const sigs = await q("SELECT raw, status, reason FROM vk_signals WHERE bot_id = $1 ORDER BY id", [bot.id]);
+  assert.equal(sigs.length, 2);
+  assert.match(sigs[0].raw, /#BTC LONG/);
+  assert.equal(sigs[1].status, "rejected");
+  await q("DELETE FROM vk_users WHERE id = $1", [u.id]);
   await pool.end();
 });

@@ -55,3 +55,20 @@ test("DCA levels and the stop beyond them", () => {
   assert.deepEqual(planErrors(plan, "long", 100), []); // stop 5% is beyond the last safety order (4.75%)
   assert.deepEqual(planErrors({ ...plan, stop: { mode: "pct", value: 4 } }, "long", 100), ["stop_before_dca"]);
 });
+
+test("provider posts from Telegram channels", () => {
+  const a = parseSignal("🟢 #BTC LONG\nEntry: 65000-65200\nTP1: 66000\nTP2: 67000\nSL: 64000\nLeverage 10x");
+  assert.ok(a.ok);
+  if (!a.ok) return;
+  assert.equal(a.signal.side, "long");
+  assert.equal(a.signal.symbol, "BTCUSDT");
+  assert.deepEqual(a.signal.overrides.tp, [{ mode: "price", value: 66000 }, { mode: "price", value: 67000 }]);
+  assert.deepEqual(a.signal.overrides.sl, { mode: "price", value: 64000 });
+  assert.equal(a.signal.overrides.leverage, 10);
+  const b = parseSignal("Шорт $SOLUSDT\nЦели: 140 / 135\nСтоп 155");
+  assert.ok(b.ok && b.signal.side === "short");
+  if (b.ok) assert.deepEqual(b.signal.overrides.tp?.map((x) => x.value), [140, 135]);
+  const c = parseSignal("#ETH closed in profit ✅ +12%");
+  assert.ok(c.ok && c.signal.action === "close");
+  assert.equal(parseSignal("Доброе утро! Рынок сегодня спокойный.").ok, false);
+});

@@ -54,7 +54,10 @@ export function parseSignal(raw: string): ParseResult {
   if (text.startsWith("{")) {
     try { obj = JSON.parse(text); } catch { return { ok: false, reason: "bad_json" }; }
   }
-  return obj ? fromJson(obj) : fromText(text);
+  if (obj) return fromJson(obj);
+  // Short command first ("long BTCUSDT"); a longer post goes to the provider-post parser.
+  const short = text.length <= 60 && !/\n/.test(text) ? fromText(text) : null;
+  return short?.ok ? short : fromPost(text);
 }
 
 function fromJson(o: any): ParseResult {
@@ -90,6 +93,43 @@ function fromJson(o: any): ParseResult {
         amount: num(o.amount ?? o.margin ?? o.usdt), amountPct: num(o.amountPct ?? o.percent_of_balance),
         leverage: num(o.leverage ?? o.lev), sl: level(o.sl ?? o.stopLoss ?? o.stop_loss ?? o.stop),
         tp: tps.length ? tps : undefined, closePercent: num(o.percent ?? o.closePercent),
+      },
+    },
+  };
+}
+
+/**
+ * Free-form provider posts (Telegram channels):
+ *   "#BTC LONG  Entry 65000-65200  TP1 66000 TP2 67000  SL 64000  Lev 10x"
+ *   "🟢 BUY $SOLUSDT … Targets: 150, 155 … Stop: 140"
+ * Only what is clearly written is taken; no number is guessed.
+ */
+export function fromPost(text: string): ParseResult {
+  const t = text.replace(/[*_`~|]/g, " ");
+  const low = t.toLowerCase();
+  const sym = t.match(/[#$]([A-Za-z0-9]{2,15})(?:\/?USDT)?\b/) ?? t.match(/\b([A-Z0-9]{2,15})\/?USDT(?:\.P|PERP)?\b/);
+  if (!sym) return { ok: false, reason: "no_symbol" };
+  // \b does not work with Cyrillic in JS regex: Russian words are matched without it.
+  const isClose = /(?:\b(?:close|closed|exit)|закры|выход|фикс)/i.test(low) && !/(?:\bentry\b|вход)/i.test(low);
+  const long = /(?:\b(?:long|buy)|лонг|покуп)/i.test(low) || /🟢/.test(t);
+  const short = /(?:\b(?:short|sell)|шорт|прода)/i.test(low) || /🔴/.test(t);
+  if (!isClose && long === short) return { ok: false, reason: "no_side" };
+  const nums = (re: RegExp) => [...t.matchAll(re)].map((m) => Number(m[1].replace(",", "."))).filter((n) => n > 0);
+  const sl = nums(/(?:\bsl|\bstop(?:[-\s]?loss)?|стоп)[^0-9\n]{0,12}([0-9]+[.,]?[0-9]*)/gi)[0];
+  let tps = nums(/(?:\btp\s?\d?|take[-\s]?profit\s?\d?|тейк\s?\d?|target\s?\d?|цель\s?\d?)[^0-9\n]{0,8}([0-9]+[.,]?[0-9]*)/gi);
+  const targetsLine = t.match(/(?:targets?|цели|тейки)\s*:?\s*([0-9.,\s\-–/]+)/i);
+  if (!tps.length && targetsLine) tps = targetsLine[1].split(/[\s\-–/,]+(?=\d)/).map((x) => Number(x.replace(",", "."))).filter((n) => n > 0);
+  const lev = nums(/(?:lev(?:erage)?|плечо|x\s?)[^0-9\n]{0,6}([0-9]{1,3})\s?x?/gi)[0] ?? nums(/\b([0-9]{1,3})x\b/gi)[0];
+  const base = sym[1].toUpperCase().replace(/USDT$/, "");
+  return {
+    ok: true,
+    signal: {
+      action: isClose ? "close" : "open", side: isClose ? (long && !short ? "long" : short && !long ? "short" : null) : long ? "long" : "short",
+      symbol: `${base}USDT`, id: null, time: null,
+      overrides: {
+        sl: sl ? { mode: "price", value: sl } : undefined,
+        tp: tps.length ? tps.slice(0, 5).map((v) => ({ mode: "price" as const, value: v })) : undefined,
+        leverage: lev && lev <= 125 ? lev : undefined,
       },
     },
   };

@@ -287,4 +287,22 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS vk_grids_user ON vk_grids (user_id, id DESC);
     `,
   },
+  {
+    id: 11,
+    name: "telegram channels as signal sources",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vk_bot_channels (
+        chat_id text NOT NULL,
+        bot_id bigint NOT NULL REFERENCES vk_bots(id) ON DELETE CASCADE,
+        title text,
+        linked_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (chat_id, bot_id)
+      );
+      CREATE TABLE IF NOT EXISTS vk_channel_link_codes (
+        code text PRIMARY KEY,
+        bot_id bigint NOT NULL REFERENCES vk_bots(id) ON DELETE CASCADE,
+        expires_at timestamptz NOT NULL
+      );
+    `,
+  },
 ];
