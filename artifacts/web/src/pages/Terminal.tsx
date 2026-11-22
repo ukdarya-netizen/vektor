@@ -6,6 +6,7 @@ import { num, pct, signedUsd, tone } from "@/lib/format";
 import { Alert, Badge, Button, Card, Empty, Spinner, cx } from "@/components/ui";
 import { Chart, type Candle, type ChartLine, type Tool } from "@/components/terminal/Chart";
 import { DrawToolbar, IndicatorMenu, useDrawings } from "@/components/terminal/ChartTools";
+import { Copilot } from "@/components/terminal/Copilot";
 import type { IndicatorConf } from "@/components/terminal/indicators";
 import { OrderTicket, type Mkt, type TicketHandle } from "@/components/terminal/OrderTicket";
 import { useFeed, type Book } from "@/components/terminal/useFeed";
@@ -175,6 +176,7 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
           ))}
         </div>
         <IndicatorMenu value={indicators} onChange={setIndicators} />
+        <Copilot accountId={account.id} symbol={symbol} managed={live} positions={positions.data?.positions ?? []} />
         {hotkeys && <Badge tone="warn">{t("hk.on")}</Badge>}
         <div className="ml-auto flex items-center gap-2">
           <span className="num text-lg font-semibold">{last !== null ? last.toFixed(prec) : "—"}</span>

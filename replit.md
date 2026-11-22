@@ -28,6 +28,7 @@
 | `RESEND_API_KEY`, `MAIL_FROM` | отправка кодов входа (resend.com). `MAIL_FROM` вида `Vektor <login@домен>` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | бот уведомлений Vektor (новый бот у @BotFather, не бот Люси) |
 | `ENGINE_ENABLED` | движок ведения позиций: в опубликованной версии включён сам (выключить — `0`); в dev выключен (включить — `1`) |
+| `ANTHROPIC_API_KEY` | AI-копилот (без ключа кнопка AI отвечает «не настроен»). Модель: `ANTHROPIC_MODEL`, по умолчанию `claude-haiku-5-5` |
 | `TELEGRAM_POLLING` | `1` только в опубликованной версии (иначе dev и prod отбирают друг у друга сообщения бота) |
 
 ## Структура
