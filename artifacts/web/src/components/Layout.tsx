@@ -64,7 +64,8 @@ export function Layout({ user, children }: { user: User; children: ReactNode }) 
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-4 md:px-6">
           <div className="text-base font-semibold md:hidden text-accent tracking-[0.2em]">VEKTOR</div>
           <div className="hidden text-base font-semibold md:block">{t(NAV.find((n) => loc.startsWith(n.href))?.key ?? "nav.terminal")}</div>
-          <ModeBadge />
+          {/* The terminal shows the mode of the selected account itself. */}
+          {!loc.startsWith("/terminal") && <ModeBadge />}
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-24 md:px-6 md:pb-6">{children}</main>
         {/* Mobile: bottom tabs */}

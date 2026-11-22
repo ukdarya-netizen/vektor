@@ -4,6 +4,7 @@ import { migrate, q } from "./db";
 import { authRouter } from "./routes/auth";
 import { accountsRouter, checkAccount } from "./routes/accounts";
 import { notificationsRouter } from "./routes/notifications";
+import { tradeRouter } from "./routes/trade";
 import { pump } from "./telegram/outbox";
 import { startPolling } from "./telegram/bot";
 
@@ -23,6 +24,7 @@ app.get("/api/healthz", (_req, res) => { res.json({ ok: true }); });
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api", accountsRouter);
+app.use("/api", tradeRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error("[api]", err);

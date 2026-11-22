@@ -102,4 +102,33 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       );
     `,
   },
+  {
+    id: 4,
+    name: "orders sent from the terminal",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vk_orders (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        account_id bigint NOT NULL REFERENCES vk_exchange_accounts(id) ON DELETE CASCADE,
+        client_request_id text NOT NULL,
+        source text NOT NULL DEFAULT 'terminal',
+        symbol text NOT NULL,
+        side text NOT NULL,
+        intent text NOT NULL,
+        type text NOT NULL,
+        qty numeric NOT NULL,
+        price numeric,
+        leverage int,
+        status text NOT NULL,
+        exchange_order_id text,
+        error_code text,
+        error_message text,
+        preflight jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (account_id, client_request_id)
+      );
+      CREATE INDEX IF NOT EXISTS vk_orders_user ON vk_orders (user_id, created_at DESC);
+    `,
+  },
 ];

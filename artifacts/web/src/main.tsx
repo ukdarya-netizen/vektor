@@ -11,6 +11,7 @@ import { Onboarding } from "@/pages/Onboarding";
 import { PortfolioPage } from "@/pages/Portfolio";
 import { PositionsPage } from "@/pages/Positions";
 import { SettingsPage } from "@/pages/Settings";
+import { TerminalPage } from "@/pages/Terminal";
 import "./index.css";
 
 const qc = new QueryClient({
@@ -53,13 +54,13 @@ function App() {
       {!user.onboarded ? <Onboarding onFinish={reloadMe} /> : (
         <Layout user={user}>
           <Switch>
-            <Route path="/terminal"><SoonTerminal /></Route>
+            <Route path="/terminal"><TerminalPage /></Route>
             <Route path="/positions"><PositionsPage /></Route>
             <Route path="/signals"><SoonSignals /></Route>
             <Route path="/portfolio"><PortfolioPage /></Route>
             <Route path="/journal"><SoonJournal /></Route>
             <Route path="/settings/:tab?"><SettingsPage user={user} onUserChange={reloadMe} /></Route>
-            <Route><Redirect to="/portfolio" /></Route>
+            <Route><Redirect to="/terminal" /></Route>
           </Switch>
         </Layout>
       )}
@@ -67,7 +68,6 @@ function App() {
   );
 }
 
-const SoonTerminal = () => { const t = useT(); return <Soon text={t("soon.terminal")} />; };
 const SoonSignals = () => { const t = useT(); return <Soon text={t("soon.signals")} />; };
 const SoonJournal = () => { const t = useT(); return <Soon text={t("soon.journal")} />; };
 
