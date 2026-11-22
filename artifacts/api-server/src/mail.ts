@@ -47,3 +47,17 @@ export async function sendLoginCode(email: string, code: string, lang: Lang): Pr
   });
   if (!res.ok) throw new Error(`mail provider HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
+
+/** Plain notification email (no HTML from user data). Silently skipped when mail is not configured. */
+export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
+  const key = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.MAIL_FROM?.trim();
+  if (!key || !from) return false;
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    body: JSON.stringify({ from, to: [to], subject: subject.slice(0, 150), text }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  return res.ok;
+}

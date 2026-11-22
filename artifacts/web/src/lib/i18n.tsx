@@ -500,6 +500,20 @@ const ru = {
   "ai.move": "Перенести стоп позиции #{id} {v}",
   "ai.moveBe": "в безубыток",
   "ai.kill": "Аварийный выключатель: {v}",
+  "ntf.channels": "Почта и push в браузере",
+  "ntf.email": "Почта ({addr})",
+  "ntf.push": "Push в этом браузере",
+  "ntf.mode.off": "Выкл",
+  "ntf.mode.critical": "Только важное",
+  "ntf.mode.all": "Всё",
+  "ntf.pushOn": "Включить push",
+  "ntf.pushOff": "Отключить на всех устройствах",
+  "ntf.pushDevices": "Устройств с push: {n}",
+  "ntf.pushUnsupported": "Этот браузер не поддерживает push-уведомления.",
+  "ntf.pushDenied": "Браузер запретил уведомления — разрешите их в настройках сайта.",
+  "ntf.pushNo": "Push не настроен на сервере (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY).",
+  "ntf.mailNo": "Почта не настроена на сервере (RESEND_API_KEY, MAIL_FROM).",
+  "ntf.channelsHint": "«Важное» — ликвидация, стоп не встал, ключ перестал работать.",
 } as const;
 
 export type Key = keyof typeof ru;
@@ -1002,6 +1016,20 @@ const en: Record<Key, string> = {
   "ai.move": "Move the stop of position #{id} {v}",
   "ai.moveBe": "to break-even",
   "ai.kill": "Kill switch: {v}",
+  "ntf.channels": "Email and browser push",
+  "ntf.email": "Email ({addr})",
+  "ntf.push": "Push in this browser",
+  "ntf.mode.off": "Off",
+  "ntf.mode.critical": "Important only",
+  "ntf.mode.all": "All",
+  "ntf.pushOn": "Turn push on",
+  "ntf.pushOff": "Turn off on all devices",
+  "ntf.pushDevices": "Devices with push: {n}",
+  "ntf.pushUnsupported": "This browser does not support push notifications.",
+  "ntf.pushDenied": "The browser blocked notifications — allow them in the site settings.",
+  "ntf.pushNo": "Push is not set up on the server (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY).",
+  "ntf.mailNo": "Email is not set up on the server (RESEND_API_KEY, MAIL_FROM).",
+  "ntf.channelsHint": "“Important” — liquidation, stop not placed, key stopped working.",
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { ru, en };

@@ -305,4 +305,20 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       );
     `,
   },
+  {
+    id: 12,
+    name: "email and browser push notifications",
+    sql: `
+      ALTER TABLE vk_notification_settings ADD COLUMN IF NOT EXISTS email_mode text NOT NULL DEFAULT 'critical';
+      ALTER TABLE vk_notification_settings ADD COLUMN IF NOT EXISTS push_mode text NOT NULL DEFAULT 'all';
+      CREATE TABLE IF NOT EXISTS vk_push_subs (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        endpoint text NOT NULL UNIQUE,
+        keys jsonb NOT NULL,
+        user_agent text,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];

@@ -15,7 +15,7 @@ await build({
   sourcemap: "linked",
   logLevel: "info",
   // ccxt and pg stay in node_modules (large / optional native parts).
-  external: ["ccxt", "pg", "pg-native"],
+  external: ["ccxt", "pg", "pg-native", "web-push"],
   banner: {
     js: `import { createRequire as __cr } from 'node:module'; globalThis.require = __cr(import.meta.url);`,
   },

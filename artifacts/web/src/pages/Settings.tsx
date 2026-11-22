@@ -115,6 +115,7 @@ function Notifications() {
         <div className="mb-3 font-medium">{t("ntf.telegram")}</div>
         <TelegramConnect />
       </Card>
+      <Channels data={data} save={save} />
       <Card className="p-4">
         <div className="mb-3 font-medium">{t("ntf.what")}</div>
         <div className="divide-y divide-line">
@@ -298,5 +299,49 @@ function Risk() {
       </Card>
       {saved && <div className="text-sm text-up">{t("risk.saved")}</div>}
     </div>
+  );
+}
+
+function Channels({ data, save }: { data: import("@/components/TelegramConnect").NotifState; save: (b: unknown) => Promise<void> }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [err, setErr] = useState<string | null>(null);
+  const Modes = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <div className="flex gap-1">
+      {(["off", "critical", "all"] as const).map((m) => (
+        <button key={m} onClick={() => onChange(m)} className={cx("rounded-md border px-2 py-1 text-xs", value === m ? "border-accent text-text" : "border-line text-muted")}>{t(`ntf.mode.${m}` as Key)}</button>
+      ))}
+    </div>
+  );
+  const b64 = (s: string) => { const p = "=".repeat((4 - (s.length % 4)) % 4); const r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
+  const enablePush = async () => {
+    setErr(null);
+    if (!data.push.publicKey) { setErr(t("ntf.pushNo")); return; }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) { setErr(t("ntf.pushUnsupported")); return; }
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { setErr(t("ntf.pushDenied")); return; }
+    const reg = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(data.push.publicKey) });
+    await api("/notifications/push", { body: { subscription: sub.toJSON() } });
+    void qc.invalidateQueries({ queryKey: ["notifications"] });
+  };
+  return (
+    <Card className="space-y-3 p-4">
+      <div className="font-medium">{t("ntf.channels")}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <span>{t("ntf.email", { addr: data.email.address })}</span>
+        {data.email.configured ? <Modes value={data.email.mode} onChange={(v) => save({ emailMode: v })} /> : <span className="text-xs text-warn">{t("ntf.mailNo")}</span>}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <span>{t("ntf.push")}{data.push.devices > 0 && <span className="ml-2 text-xs text-muted">{t("ntf.pushDevices", { n: data.push.devices })}</span>}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          {data.push.devices > 0 && <Modes value={data.push.mode} onChange={(v) => save({ pushMode: v })} />}
+          <Button size="sm" variant="outline" onClick={enablePush}>{t("ntf.pushOn")}</Button>
+          {data.push.devices > 0 && <Button size="sm" variant="danger" onClick={async () => { await api("/notifications/push", { method: "DELETE" }); void qc.invalidateQueries({ queryKey: ["notifications"] }); }}>{t("ntf.pushOff")}</Button>}
+        </div>
+      </div>
+      <div className="text-xs text-muted">{t("ntf.channelsHint")}</div>
+      {err && <Alert tone="warn">{err}</Alert>}
+    </Card>
   );
 }

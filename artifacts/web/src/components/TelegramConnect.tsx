@@ -10,6 +10,8 @@ export type NotifState = {
   quietFrom: number | null;
   quietTo: number | null;
   delivery: { pending: number; failed: number; lastSentAt: string | null; lastFailure: { error: string; at: string; text: string } | null };
+  email: { configured: boolean; mode: "off" | "critical" | "all"; address: string };
+  push: { publicKey: string | null; mode: "off" | "critical" | "all"; devices: number };
 };
 
 export const useNotif = (poll = false) =>

@@ -1,5 +1,7 @@
 import { one } from "../db";
 import { enqueue } from "./outbox";
+import { sendMail } from "../mail";
+import { sendPush } from "./push";
 import type { Msg } from "./texts";
 
 /** Every notification kind belongs to a group the user can switch off — except CRITICAL ones. */
@@ -33,17 +35,32 @@ export function inQuietHours(now: Date, tz: string, from: number | null, to: num
  * Queues a message for the user's Telegram if linked and allowed.
  * Quiet hours drop non-critical messages (they are about the past by morning).
  */
+export type ChannelMode = "off" | "critical" | "all";
+
+/**
+ * Sends to every channel the user has: Telegram (by groups), email and browser push (by mode).
+ * Quiet hours drop non-critical messages (they are about the past by morning).
+ * Email/push failures never block Telegram.
+ */
 export async function notify(userId: number, kind: Kind, msg: Msg): Promise<boolean> {
-  const r = await one<{ chat_id: string | null; lang: string; tz: string; groups: Record<string, boolean> | null; quiet_from: number | null; quiet_to: number | null }>(
-    `SELECT l.chat_id, u.lang, u.tz, s.groups, s.quiet_from, s.quiet_to FROM vk_users u
+  const r = await one<{ email: string; chat_id: string | null; lang: string; tz: string; groups: Record<string, boolean> | null; quiet_from: number | null; quiet_to: number | null; email_mode: ChannelMode | null; push_mode: ChannelMode | null }>(
+    `SELECT u.email, l.chat_id, u.lang, u.tz, s.groups, s.quiet_from, s.quiet_to, s.email_mode, s.push_mode FROM vk_users u
      LEFT JOIN vk_telegram_links l ON l.user_id = u.id LEFT JOIN vk_notification_settings s ON s.user_id = u.id WHERE u.id = $1`, [userId]);
-  if (!r?.chat_id) return false;
-  if (!CRITICAL.has(kind)) {
+  if (!r) return false;
+  const critical = CRITICAL.has(kind);
+  if (!critical) {
     const g = groupOf(kind);
     const on = g ? (r.groups?.[g] ?? DEFAULT_GROUPS[g]) : true;
     if (!on) return false;
     if (inQuietHours(new Date(), r.tz, r.quiet_from, r.quiet_to)) return false;
   }
-  await enqueue(userId, r.chat_id, kind, r.lang === "en" ? msg.en : msg.ru);
-  return true;
+  const text = r.lang === "en" ? msg.en : msg.ru;
+  let delivered = false;
+  if (r.chat_id) { await enqueue(userId, r.chat_id, kind, text); delivered = true; }
+  if (kind === "test") return delivered;
+  const wants = (m: ChannelMode | null, def: ChannelMode) => { const mode = m ?? def; return mode === "all" || (mode === "critical" && critical); };
+  const [title, ...rest] = text.split("\n");
+  if (wants(r.email_mode, "critical")) void sendMail(r.email, `Vektor: ${title}`, text).catch(() => undefined);
+  if (wants(r.push_mode, "all")) void sendPush(userId, title, rest.join("\n") || title).catch(() => undefined);
+  return delivered;
 }
