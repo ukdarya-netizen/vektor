@@ -429,6 +429,21 @@ const ru = {
   "paper.resetConfirm": "Сбросить демо-счёт {label}? Все позиции и ордера исчезнут, баланс станет {v} USDT.",
   "paper.or": "или подключите реальную биржу по API-ключу",
   "paper.badge": "Демо",
+  "tfa.title": "Двухфакторная защита",
+  "tfa.text": "Код из приложения-аутентификатора (Google Authenticator, 1Password и т. п.) при входе, изменении риск-лимитов и подключении или удалении биржи.",
+  "tfa.on": "Включена",
+  "tfa.off": "Выключена",
+  "tfa.setup": "Включить",
+  "tfa.scan": "Отсканируйте QR-код в приложении или введите ключ вручную, затем введите 6 цифр из приложения.",
+  "tfa.code": "Код из приложения",
+  "tfa.confirm": "Подтвердить",
+  "tfa.disable": "Выключить",
+  "tfa.disablePrompt": "Код из приложения, чтобы выключить защиту",
+  "tfa.prompt": "Это действие защищено. Введите 6 цифр из приложения-аутентификатора:",
+  "tfa.loginTitle": "Код из приложения",
+  "tfa.loginText": "У аккаунта включена двухфакторная защита. Введите 6 цифр из приложения-аутентификатора.",
+  "err.wrong_2fa": "Неверный код из приложения",
+  "err.ticket_expired": "Время вышло — войдите заново",
 } as const;
 
 export type Key = keyof typeof ru;
@@ -860,6 +875,21 @@ const en: Record<Key, string> = {
   "paper.resetConfirm": "Reset demo account {label}? All positions and orders disappear, the balance becomes {v} USDT.",
   "paper.or": "or connect a real exchange with an API key",
   "paper.badge": "Demo",
+  "tfa.title": "Two-factor protection",
+  "tfa.text": "A code from an authenticator app (Google Authenticator, 1Password, etc.) at sign-in, when changing risk limits and when connecting or removing an exchange.",
+  "tfa.on": "On",
+  "tfa.off": "Off",
+  "tfa.setup": "Turn on",
+  "tfa.scan": "Scan the QR code in the app or type the key, then enter the 6 digits from the app.",
+  "tfa.code": "Code from the app",
+  "tfa.confirm": "Confirm",
+  "tfa.disable": "Turn off",
+  "tfa.disablePrompt": "Code from the app to turn protection off",
+  "tfa.prompt": "This action is protected. Enter the 6 digits from your authenticator app:",
+  "tfa.loginTitle": "Code from the app",
+  "tfa.loginText": "Two-factor protection is on for this account. Enter the 6 digits from your authenticator app.",
+  "err.wrong_2fa": "Wrong code from the app",
+  "err.ticket_expired": "Time is up — sign in again",
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { ru, en };

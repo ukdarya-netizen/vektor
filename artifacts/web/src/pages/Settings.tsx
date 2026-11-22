@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Account, type User } from "@/lib/api";
 import { useT, type Key } from "@/lib/i18n";
 import { time } from "@/lib/format";
-import { Alert, Badge, Button, Card, Empty, Spinner, Switch, cx } from "@/components/ui";
+import { Alert, Badge, Button, Card, Empty, Input, Spinner, Switch, cx } from "@/components/ui";
 import { ConnectExchange } from "@/components/ConnectExchange";
 import { TelegramConnect, useNotif } from "@/components/TelegramConnect";
 
@@ -156,11 +156,62 @@ function Notifications() {
   );
 }
 
+function TwoFactor() {
+  const t = useT();
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["2fa"], queryFn: () => api<{ enabled: boolean }>("/auth/2fa") });
+  const [setup, setSetup] = useState<{ secret: string; qr: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const start = async () => {
+    const r = await api<{ secret: string; url: string }>("/auth/2fa/setup", { method: "POST" });
+    const QR = await import("qrcode");
+    setSetup({ secret: r.secret, qr: await QR.toDataURL(r.url, { margin: 1, width: 200 }) });
+    setErr(null); setCode("");
+  };
+  const enable = async () => {
+    try { await api("/auth/2fa/enable", { body: { code } }); setSetup(null); void qc.invalidateQueries({ queryKey: ["2fa"] }); }
+    catch (e: any) { setErr(t(`err.${e?.code}` as Key) !== `err.${e?.code}` ? t(`err.${e?.code}` as Key) : t("err.generic")); }
+  };
+  const disable = async () => {
+    const c = prompt(t("tfa.disablePrompt"));
+    if (!c) return;
+    try { await api("/auth/2fa/disable", { body: { code: c } }); void qc.invalidateQueries({ queryKey: ["2fa"] }); }
+    catch { alert(t("err.wrong_2fa")); }
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-medium">{t("tfa.title")}</div>
+        <Badge tone={data?.enabled ? "up" : "muted"}>{data?.enabled ? t("tfa.on") : t("tfa.off")}</Badge>
+      </div>
+      <div className="mt-1 text-sm text-muted">{t("tfa.text")}</div>
+      {data?.enabled ? <Button className="mt-3" size="sm" variant="danger" onClick={disable}>{t("tfa.disable")}</Button>
+        : !setup ? <Button className="mt-3" size="sm" onClick={start}>{t("tfa.setup")}</Button>
+        : (
+          <div className="mt-3 space-y-3">
+            <div className="text-sm">{t("tfa.scan")}</div>
+            <div className="flex flex-wrap items-center gap-4">
+              <img src={setup.qr} alt="QR" className="h-40 w-40 rounded-lg bg-white p-1" />
+              <code className="break-all rounded-md bg-bg px-2 py-1 font-mono text-xs">{setup.secret}</code>
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="w-40"><Input label={t("tfa.code")} inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} error={err} /></div>
+              <Button onClick={enable} disabled={code.length !== 6}>{t("tfa.confirm")}</Button>
+            </div>
+          </div>
+        )}
+    </Card>
+  );
+}
+
 function Security() {
   const t = useT();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["sessions"], queryFn: () => api<{ sessions: Array<{ id: string; current: boolean; userAgent: string; ip: string; lastSeenAt: string }> }>("/auth/sessions") });
   return (
+    <div className="space-y-4">
+    <TwoFactor />
     <Card className="p-4">
       <div className="mb-3 font-medium">{t("sec.sessions")}</div>
       <div className="divide-y divide-line">
@@ -181,6 +232,7 @@ function Security() {
         </Button>
       )}
     </Card>
+    </div>
   );
 }
 

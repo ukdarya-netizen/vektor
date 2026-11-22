@@ -7,7 +7,7 @@ import { dropClient, exchangeError, makeClient, type AccountRow, type Credential
 import { readPermissions, type KeyPermissions } from "../exchanges/permissions";
 import { snapshot } from "../exchanges/snapshot";
 import { resetPaper } from "../exchanges/paper";
-import { requireUser, userOf, type AuthedRequest } from "./auth";
+import { require2fa, requireUser, userOf, type AuthedRequest } from "./auth";
 import { notify } from "../telegram/notify";
 import { T } from "../telegram/texts";
 
@@ -78,7 +78,7 @@ const addSchema = z.object({
  * Connect = check, then save. Nothing is stored unless the key works, and a key that can
  * withdraw is refused. Order: balance (key works) → permissions → save.
  */
-accountsRouter.post("/accounts", async (req, res) => {
+accountsRouter.post("/accounts", require2fa, async (req, res) => {
   const user = userOf(req);
   const p = addSchema.safeParse(req.body);
   if (!p.success) { res.status(400).json({ error: "bad_request" }); return; }
@@ -131,7 +131,7 @@ accountsRouter.patch("/accounts/:id", async (req, res) => {
   res.json({ account: row });
 });
 
-accountsRouter.delete("/accounts/:id", async (req, res) => {
+accountsRouter.delete("/accounts/:id", require2fa, async (req, res) => {
   const user = userOf(req);
   const row = await one("DELETE FROM vk_exchange_accounts WHERE id = $1 AND user_id = $2 RETURNING id", [Number(req.params.id), user.id]);
   if (!row) { res.status(404).json({ error: "not_found" }); return; }

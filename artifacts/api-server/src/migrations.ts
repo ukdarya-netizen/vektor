@@ -257,4 +257,13 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       );
     `,
   },
+  {
+    id: 9,
+    name: "two-factor authentication",
+    sql: `
+      ALTER TABLE vk_users ADD COLUMN IF NOT EXISTS totp_secret_enc text;
+      ALTER TABLE vk_users ADD COLUMN IF NOT EXISTS totp_enabled boolean NOT NULL DEFAULT false;
+      ALTER TABLE vk_users ADD COLUMN IF NOT EXISTS totp_last_step bigint;
+    `,
+  },
 ];

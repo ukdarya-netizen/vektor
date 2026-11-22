@@ -6,7 +6,7 @@ import { keyedHash, randomToken } from "../crypto";
 import { planErrors, planSchema } from "../engine/plan";
 import { NO_LIMITS, limitsOf } from "../engine/risk";
 import { botSettingsSchema, enqueueSignal, processSignal, receive } from "../signals/process";
-import { requireUser, userOf } from "./auth";
+import { require2fa, requireUser, userOf } from "./auth";
 
 /** Public: TradingView / any server POSTs here. The secret is the token in the URL. */
 export const hookRouter = Router();
@@ -146,7 +146,7 @@ botsRouter.get("/risk", async (req, res) => {
   const l = await limitsOf(userOf(req).id);
   res.json({ limits: l === NO_LIMITS ? { ...NO_LIMITS } : l });
 });
-botsRouter.put("/risk", async (req, res) => {
+botsRouter.put("/risk", require2fa, async (req, res) => {
   const n = z.number().positive().nullable();
   const b = z.object({ killSwitch: z.boolean(), maxLeverage: z.number().int().min(1).max(250).nullable(), maxMarginPerTrade: n, maxOpenPositions: z.number().int().min(1).max(500).nullable(), dailyLossLimit: n }).safeParse(req.body);
   if (!b.success) { res.status(400).json({ error: "bad_request" }); return; }

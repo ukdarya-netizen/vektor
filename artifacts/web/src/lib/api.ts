@@ -6,15 +6,27 @@ export class ApiError extends Error {
 
 const BASE = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api`;
 
-export async function api<T = any>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+/** Set by the app: asks the user for a 2FA code (protected actions). */
+let askCode: (() => string | null) | null = null;
+export const setTwoFactorPrompt = (f: () => string | null) => { askCode = f; };
+
+export async function api<T = any>(path: string, init: { method?: string; body?: unknown; code?: string } = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (init.body !== undefined) headers["content-type"] = "application/json";
+  if (init.code) headers["x-2fa-code"] = init.code;
   const res = await fetch(`${BASE}${path}`, {
     method: init.method ?? (init.body !== undefined ? "POST" : "GET"),
-    headers: init.body !== undefined ? { "content-type": "application/json" } : undefined,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-    credentials: "include",
+    headers, body: init.body !== undefined ? JSON.stringify(init.body) : undefined, credentials: "include",
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, body?.error ?? `http_${res.status}`, body);
+  if (!res.ok) {
+    // Protected action: ask for the code once per attempt and repeat the same request.
+    if (res.status === 403 && (body?.error === "need_2fa_code" || body?.error === "wrong_2fa") && askCode) {
+      const code = askCode();
+      if (code) return api<T>(path, { ...init, code: code.replace(/\s/g, "") });
+    }
+    throw new ApiError(res.status, body?.error ?? `http_${res.status}`, body);
+  }
   return body as T;
 }
 

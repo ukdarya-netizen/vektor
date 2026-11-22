@@ -7,7 +7,9 @@ import { Button, Input } from "@/components/ui";
 export function Login({ lang, onLang, onDone }: { lang: Lang; onLang: (l: Lang) => void; onDone: () => void }) {
   const t = (k: Key, v?: Record<string, string | number>) => translate(lang, k, v);
   const [email, setEmail] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState<"email" | "code" | "totp">("email");
+  const [ticket, setTicket] = useState("");
+  const [totp, setTotp] = useState("");
   const [code, setCode] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,7 +46,8 @@ export function Login({ lang, onLang, onDone }: { lang: Lang; onLang: (l: Lang) 
     if (c.length !== 6) return;
     setErr(null); setBusy(true);
     try {
-      await api("/auth/verify", { body: { email, code: c, lang } });
+      const r = await api<{ need2fa?: boolean; ticket?: string }>("/auth/verify", { body: { email, code: c, lang } });
+      if (r.need2fa && r.ticket) { setTicket(r.ticket); setStep("totp"); setErr(null); return; }
       onDone();
     } catch (e) { setErr(errText(e)); setCode(""); }
     finally { setBusy(false); }
@@ -66,7 +69,20 @@ export function Login({ lang, onLang, onDone }: { lang: Lang; onLang: (l: Lang) 
         </div>
         <h1 className="text-2xl font-semibold">{t("login.title")}</h1>
 
-        {step === "email" ? (
+        {step === "totp" ? (
+          <form className="mt-6 space-y-4" onSubmit={async (e) => {
+            e.preventDefault(); setErr(null); setBusy(true);
+            try { await api("/auth/2fa/login", { body: { ticket, code: totp } }); onDone(); }
+            catch (er) { setErr(errText(er)); if (er instanceof ApiError && er.code === "ticket_expired") setStep("email"); setTotp(""); }
+            finally { setBusy(false); }
+          }}>
+            <p className="text-sm text-muted">{t("tfa.loginText")}</p>
+            <Input label={t("tfa.loginTitle")} autoFocus autoComplete="one-time-code" inputMode="numeric" maxLength={6}
+              className="text-center font-mono text-2xl tracking-[0.5em]" value={totp} error={err}
+              onChange={(e) => setTotp(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+            <Button type="submit" size="lg" className="w-full" disabled={busy || totp.length !== 6}>{t("login.enter")}</Button>
+          </form>
+        ) : step === "email" ? (
           <form className="mt-6 space-y-4" onSubmit={(e) => { e.preventDefault(); void requestCode(); }}>
             <p className="text-sm text-muted">{t("login.subtitle")}</p>
             <Input label={t("login.email")} type="email" autoComplete="email" inputMode="email" autoFocus required

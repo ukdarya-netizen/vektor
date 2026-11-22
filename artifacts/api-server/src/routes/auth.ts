@@ -1,7 +1,8 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { one, q } from "../db";
-import { keyedHash, randomToken, safeEqualHex, sixDigitCode } from "../crypto";
+import { decrypt, encrypt, keyedHash, randomToken, safeEqualHex, sixDigitCode } from "../crypto";
+import { newSecret, otpauthUrl, verifyTotp } from "../totp";
 import { sendLoginCode } from "../mail";
 
 /**
@@ -93,14 +94,99 @@ authRouter.post("/verify", async (req, res) => {
     `INSERT INTO vk_users (email, lang, last_login_at) VALUES ($1, $2, now())
      ON CONFLICT (email) DO UPDATE SET last_login_at = now()
      RETURNING id, (xmax = 0) AS created`, [normEmail(email), lang]);
+  const u2 = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [user!.id]);
+  if (u2?.totp_enabled) {
+    // Second step: a short-lived signed ticket, exchanged for a session with a valid 2FA code.
+    const exp = Date.now() + 5 * 60_000;
+    res.json({ ok: true, need2fa: true, ticket: `${user!.id}.${exp}.${keyedHash(`2fa:${user!.id}:${exp}`)}` });
+    return;
+  }
+  await startSession(req, res, user!.id);
+  res.json({ ok: true, created: user!.created });
+});
+
+async function startSession(req: Request, res: Response, userId: number) {
   const token = randomToken();
   await q(`INSERT INTO vk_sessions (token_hash, user_id, user_agent, ip, expires_at)
            VALUES ($1, $2, $3, $4, now() + make_interval(days => $5))`,
-    [keyedHash(`sess:${token}`), user!.id, String(req.headers["user-agent"] ?? "").slice(0, 300), ip(req), SESSION_DAYS]);
+    [keyedHash(`sess:${token}`), userId, String(req.headers["user-agent"] ?? "").slice(0, 300), ip(req), SESSION_DAYS]);
   res.cookie(COOKIE, token, {
     httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: SESSION_DAYS * 86_400_000,
   });
-  res.json({ ok: true, created: user!.created });
+}
+
+/* ---------- two-factor ---------- */
+const attempts = new Map<number, { n: number; until: number }>();
+/** 5 wrong codes → 5 minutes pause. A used step cannot be reused (replay). */
+async function checkCode(userId: number, code: string): Promise<"ok" | "wrong" | "locked" | "off"> {
+  const a = attempts.get(userId);
+  if (a && a.n >= 5 && a.until > Date.now()) return "locked";
+  const u = await one<{ totp_secret_enc: string | null; totp_enabled: boolean; totp_last_step: string | null }>("SELECT totp_secret_enc, totp_enabled, totp_last_step FROM vk_users WHERE id = $1", [userId]);
+  if (!u?.totp_secret_enc) return "off";
+  const step = verifyTotp(decrypt(u.totp_secret_enc), code);
+  if (step === null || (u.totp_last_step !== null && step <= Number(u.totp_last_step))) {
+    attempts.set(userId, { n: (a && a.until > Date.now() ? a.n : 0) + 1, until: Date.now() + 5 * 60_000 });
+    return "wrong";
+  }
+  attempts.delete(userId);
+  await q("UPDATE vk_users SET totp_last_step = $2 WHERE id = $1", [userId, step]);
+  return "ok";
+}
+
+authRouter.post("/2fa/login", async (req, res) => {
+  const [uid, exp, sig] = String(req.body?.ticket ?? "").split(".");
+  const userId = Number(uid);
+  if (!userId || !exp || Number(exp) < Date.now() || !sig || !safeEqualHex(sig, keyedHash(`2fa:${userId}:${exp}`))) { res.status(400).json({ error: "ticket_expired" }); return; }
+  const r = await checkCode(userId, String(req.body?.code ?? ""));
+  if (r !== "ok") { res.status(400).json({ error: r === "locked" ? "too_many_attempts" : "wrong_2fa" }); return; }
+  await startSession(req, res, userId);
+  res.json({ ok: true });
+});
+
+/**
+ * Sensitive actions (risk limits, connecting/removing a real exchange) need a fresh code when 2FA is on.
+ * The code comes in the X-2FA-Code header; without it → 403 need_2fa_code, the UI asks and repeats.
+ */
+export async function require2fa(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const user = userOf(req);
+  const u = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [user.id]);
+  if (!u?.totp_enabled) { next(); return; }
+  const code = String(req.headers["x-2fa-code"] ?? "");
+  if (!code) { res.status(403).json({ error: "need_2fa_code" }); return; }
+  const r = await checkCode(user.id, code);
+  if (r !== "ok") { res.status(403).json({ error: r === "locked" ? "too_many_attempts" : "wrong_2fa" }); return; }
+  next();
+}
+
+authRouter.get("/2fa", requireUser, async (req, res) => {
+  const u = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [userOf(req).id]);
+  res.json({ enabled: Boolean(u?.totp_enabled) });
+});
+
+/** New secret (not active until confirmed with a code). */
+authRouter.post("/2fa/setup", requireUser, async (req, res) => {
+  const user = userOf(req);
+  const u = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [user.id]);
+  if (u?.totp_enabled) { res.status(409).json({ error: "already_enabled" }); return; }
+  const secret = newSecret();
+  await q("UPDATE vk_users SET totp_secret_enc = $2, totp_last_step = NULL WHERE id = $1", [user.id, encrypt(secret)]);
+  res.json({ secret, url: otpauthUrl(secret, user.email) });
+});
+
+authRouter.post("/2fa/enable", requireUser, async (req, res) => {
+  const user = userOf(req);
+  const r = await checkCode(user.id, String(req.body?.code ?? ""));
+  if (r !== "ok") { res.status(400).json({ error: r === "locked" ? "too_many_attempts" : r === "off" ? "setup_first" : "wrong_2fa" }); return; }
+  await q("UPDATE vk_users SET totp_enabled = true WHERE id = $1", [user.id]);
+  res.json({ ok: true });
+});
+
+authRouter.post("/2fa/disable", requireUser, async (req, res) => {
+  const user = userOf(req);
+  const r = await checkCode(user.id, String(req.body?.code ?? ""));
+  if (r !== "ok") { res.status(400).json({ error: r === "locked" ? "too_many_attempts" : "wrong_2fa" }); return; }
+  await q("UPDATE vk_users SET totp_enabled = false, totp_secret_enc = NULL, totp_last_step = NULL WHERE id = $1", [user.id]);
+  res.json({ ok: true });
 });
 
 authRouter.get("/me", requireUser, async (req, res) => {

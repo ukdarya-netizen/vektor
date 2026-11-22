@@ -2,7 +2,8 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, Route, Router, Switch } from "wouter";
-import { api, ApiError, type User } from "@/lib/api";
+import { api, ApiError, setTwoFactorPrompt, type User } from "@/lib/api";
+import { translate } from "@/lib/i18n";
 import { browserLang, LangProvider, useT, type Lang } from "@/lib/i18n";
 import { Layout } from "@/components/Layout";
 import { Spinner } from "@/components/ui";
@@ -27,7 +28,7 @@ function App() {
   const user = me.data?.user;
   const lang: Lang = user?.lang ?? guestLang;
 
-  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+  useEffect(() => { document.documentElement.lang = lang; setTwoFactorPrompt(() => prompt(translate(lang, "tfa.prompt"))); }, [lang]);
   // First sign-in: remember the browser time zone.
   useEffect(() => {
     if (user && user.tz === "UTC") {
