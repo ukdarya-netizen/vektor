@@ -31,7 +31,11 @@
 | `ANTHROPIC_API_KEY` | AI-копилот (без ключа кнопка AI отвечает «не настроен»). Модель: `ANTHROPIC_MODEL`, по умолчанию `claude-haiku-5-5` |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | push-уведомления в браузере. Сгенерировать один раз: `node -e "console.log(require('web-push').generateVAPIDKeys())"` в artifacts/api-server; SUBJECT — `mailto:ваша@почта` |
 | `VEKTOR_ADMIN_EMAILS` | почты владельцев платформы через запятую — им виден раздел «Пользователи» (выдача и продление подписок) |
-| `VEKTOR_BILLING_CONTACT` | куда писать за продлением (например `@lucy_support`), показывается в «Подписке» и в напоминаниях |
+| `PAY_TRC20_ADDRESS` | ваш кошелёк USDT TRC20 — на него приходят оплаты. Без него оплата в интерфейсе выключена |
+| `TRONGRID_API_KEY` | необязательно: ключ trongrid.io (бесплатный) — без него проверка платежей тоже работает, но с меньшим лимитом запросов |
+| `VECTOR_BOTS_SECRET` | общий секрет VECTOR ↔ боты (длинная случайная строка). Тот же секрет ставится в каждом боте |
+| `BOT_CAB_URL`, `BOT_NIHILIST_URL`, `BOT_BMM_URL` | адреса опубликованных ботов (https://…), чтобы VECTOR открывал доступ и брал статистику |
+| `BOT_CAB_TELEGRAM`, `BOT_NIHILIST_TELEGRAM`, `BOT_BMM_TELEGRAM` | username ботов в Telegram без @ (кнопка «Открыть бота») |
 | `TELEGRAM_POLLING` | `1` только в опубликованной версии (иначе dev и prod отбирают друг у друга сообщения бота) |
 
 ## Структура

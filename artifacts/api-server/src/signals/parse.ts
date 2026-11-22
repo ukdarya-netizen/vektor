@@ -5,7 +5,7 @@
  *  3) Plain text: "BUY BTCUSDT", "long BINANCE:SOLUSDT.P", "close ETHUSDT", "exit short BTC"
  * Anything the parser is not sure about is rejected with a reason — never guessed.
  */
-export type Action = "open" | "close" | "reverse";
+export type Action = "open" | "close" | "reverse" | "move_stop";
 export type Parsed = {
   action: Action;
   side: "long" | "short" | null;
@@ -74,10 +74,12 @@ function fromJson(o: any): ParseResult {
   if (!actionRaw || actionRaw === "open" || actionRaw === "entry" || actionRaw === "enter") action = "open";
   else if (["close", "exit", "flat", "tp", "sl"].includes(actionRaw)) action = "close";
   else if (actionRaw === "reverse" || actionRaw === "flip") action = "reverse";
+  else if (actionRaw === "move_stop" || actionRaw === "stop_move" || actionRaw === "update_stop") action = "move_stop";
   else return { ok: false, reason: "unknown_action" };
 
   const side = SIDE[sideRaw] ?? null;
   if (action !== "close" && !side) return { ok: false, reason: "no_side" };
+  if (action === "move_stop" && !level(o.sl ?? o.stopLoss ?? o.stop_loss ?? o.stop)) return { ok: false, reason: "no_stop" };
   // A close by "sell" means close the long, by "buy" close the short.
   const closeSide = action === "close" && side && SIDE[sideRaw] && (sideRaw === "buy" || sideRaw === "sell") ? (sideRaw === "sell" ? "long" : "short") : side;
 

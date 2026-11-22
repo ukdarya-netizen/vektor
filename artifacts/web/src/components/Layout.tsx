@@ -9,6 +9,7 @@ import { Logo, Wordmark } from "./Brand";
 const NAV: Array<{ href: string; key: Key; icon: string }> = [
   { href: "/terminal", key: "nav.terminal", icon: "M3 17l5-6 4 4 7-9" },
   { href: "/positions", key: "nav.positions", icon: "M4 6h16M4 12h16M4 18h10" },
+  { href: "/bots", key: "nav.bots", icon: "M9 3h6M12 3v3M5 8h14v11H5zM9 13h.01M15 13h.01M9 16h6" },
   { href: "/signals", key: "nav.signals", icon: "M13 2L4 14h7l-1 8 9-12h-7l1-8z" },
   { href: "/portfolio", key: "nav.portfolio", icon: "M4 19V9m6 10V5m6 14v-7m4 7H2" },
   { href: "/journal", key: "nav.journal", icon: "M6 3h10l4 4v14H6zM9 12h8M9 16h8M9 8h4" },
@@ -125,7 +126,7 @@ export function Layout({ user, workspaces = [], children }: { user: User; worksp
       </main>
 
       {/* Mobile: bottom tabs */}
-      <nav className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line md:hidden">
+      <nav className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-line md:hidden">
         {[...NAV, { href: "/settings", key: "nav.settings" as Key, icon: GEAR }].map((n) => (
           <Link key={n.href} href={n.href}
             className={cx("flex flex-col items-center gap-1 py-2 text-[10px]", loc.startsWith(n.href) ? "text-accent" : "text-muted")}>

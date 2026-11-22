@@ -48,6 +48,53 @@ export function AdminPage() {
           </div>
         )}
       </Card>
+      <Payments />
     </div>
+  );
+}
+
+type Inc = { tx_hash: string; from_address: string; amount: number; at: string; invoice_id: number | null; status: string };
+type Inv = { id: number; email: string; amount: number; status: string; created_at: string; tx_hash: string | null; user_txid: string | null; items: Array<{ product: string; months: number }> };
+
+/** Incoming USDT: unmatched transfers are assigned to an invoice by hand (the user is credited and notified). */
+function Payments() {
+  const t = useT();
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin-pay"], queryFn: () => api<{ invoices: Inv[]; incoming: Inc[] }>("/admin/payments"), refetchInterval: 30_000 });
+  const [pick, setPick] = useState<Record<string, string>>({});
+  if (!data) return null;
+  const open = data.invoices.filter((i) => i.status !== "paid");
+  const act = async (tx: string, what: "assign" | "ignore") => {
+    await api(`/admin/incoming/${tx}/${what}`, { body: { invoiceId: Number(pick[tx]) } });
+    void qc.invalidateQueries({ queryKey: ["admin-pay"] });
+  };
+  return (
+    <>
+      <h2 className="pt-4 text-lg font-semibold">{t("adm.payments")}</h2>
+      <Card>
+        <div className="divide-y divide-line">
+          {data.incoming.length === 0 && <div className="p-4 text-sm text-muted">{t("adm.noIncoming")}</div>}
+          {data.incoming.map((x) => (
+            <div key={x.tx_hash} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+              <div className="min-w-0">
+                <div><span className="num font-medium">{x.amount} USDT</span> <span className="text-xs text-muted">· {time(x.at, t.lang)} · {x.from_address.slice(0, 8)}…</span></div>
+                <a className="font-mono text-xs text-accent hover:underline" href={`https://tronscan.org/#/transaction/${x.tx_hash}`} target="_blank" rel="noreferrer">{x.tx_hash.slice(0, 16)}…</a>
+                <span className="ml-2 text-xs text-muted">{t(`adm.st.${x.status}` as any)}{x.invoice_id ? ` #${x.invoice_id}` : ""}</span>
+              </div>
+              {x.status === "unmatched" && (
+                <div className="flex items-center gap-1">
+                  <select className="h-8 max-w-[16rem] rounded-md border border-line bg-bg px-2 text-xs" value={pick[x.tx_hash] ?? ""} onChange={(e) => setPick((p) => ({ ...p, [x.tx_hash]: e.target.value }))}>
+                    <option value="">{t("adm.chooseInvoice")}</option>
+                    {open.map((i) => <option key={i.id} value={i.id}>#{i.id} · {i.email} · {i.amount}{i.user_txid === x.tx_hash ? " · TxID ✓" : ""}</option>)}
+                  </select>
+                  <Button size="sm" disabled={!pick[x.tx_hash]} onClick={() => act(x.tx_hash, "assign")}>{t("adm.assign")}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => act(x.tx_hash, "ignore")}>{t("adm.ignore")}</Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+    </>
   );
 }

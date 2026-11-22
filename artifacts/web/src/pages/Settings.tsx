@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Checkout, useCatalog } from "./Bots";
 import { Link, useRoute } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Account, type User } from "@/lib/api";
@@ -465,10 +466,48 @@ function Billing() {
         ))}
         <div className="flex items-center justify-between py-3 text-sm"><span>{t("bill.copilot")}</span><span>{data.limits.copilot ? "✓" : "—"}</span></div>
       </Card>
-      <Card className="p-4 text-sm">
-        <div className="font-medium">{t("bill.renew")}</div>
-        <div className="mt-1 text-muted">{data.contact ? t("bill.renewText", { c: data.contact }) : t("bill.renewNoContact")}</div>
-      </Card>
+      <BuyTerminal />
+      <Invoices />
     </div>
+  );
+}
+
+function BuyTerminal() {
+  const t = useT();
+  const { data } = useCatalog();
+  const [open, setOpen] = useState(false);
+  if (!data) return null;
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="font-medium">{t("bill.buyTitle")}</div>
+          <div className="mt-1 text-sm text-muted">{t("bill.buyText", { m1: data.prices.terminal[1], m3: data.prices.terminal[3], m12: data.prices.terminal[12] })}</div>
+        </div>
+        <Button onClick={() => setOpen(true)} disabled={!data.payments}>{data.terminal.paidUntil ? t("shop.extend") : t("bill.buy")}</Button>
+      </div>
+      {!data.payments && <div className="mt-2 text-xs text-muted">{t("shop.notConfigured")}</div>}
+      {open && <Checkout title="VECTOR" kinds={[{ product: "terminal", kind: "terminal" }]} cat={data} onClose={() => setOpen(false)} />}
+    </Card>
+  );
+}
+
+function Invoices() {
+  const t = useT();
+  const { data } = useQuery({ queryKey: ["invoices"], queryFn: () => api<{ invoices: Array<{ id: number; amount: number; status: string; created_at: string; tx_hash: string | null; items: Array<{ product: string; months: number }> }> }>("/shop/invoices") });
+  const rows = (data?.invoices ?? []).filter((i) => i.status === "paid");
+  if (!rows.length) return null;
+  return (
+    <Card className="divide-y divide-line px-4">
+      <div className="py-3 text-sm font-medium">{t("bill.history")}</div>
+      {rows.map((i) => (
+        <div key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-xs">
+          <span className="text-muted">{time(i.created_at, t.lang)}</span>
+          <span>{i.items.map((x) => `${x.product === "terminal" ? "VECTOR" : x.product.split(":")[1].toUpperCase() + (x.product.endsWith(":auto") ? " auto" : "")} ×${x.months}`).join(", ")}</span>
+          <span className="num">{i.amount} USDT</span>
+          {i.tx_hash && <a className="font-mono text-accent hover:underline" href={`https://tronscan.org/#/transaction/${i.tx_hash}`} target="_blank" rel="noreferrer">{i.tx_hash.slice(0, 10)}…</a>}
+        </div>
+      ))}
+    </Card>
   );
 }

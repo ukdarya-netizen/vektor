@@ -100,6 +100,17 @@ export async function processSignal(bot: Bot, signalId: number, p: Parsed, opts:
     } catch (e) { return fin("rejected", `exchange_error:${exchangeError(e).message}`.slice(0, 200), { error: exchangeError(e) }); }
   }
 
+  if (p.action === "move_stop") {
+    // The source moved its stop: the same price goes into the managed position's plan (Lucy's rule — stop exactly where the source's is).
+    const sl = p.overrides.sl;
+    const pos = await one<{ id: number; plan: any }>("SELECT id, plan FROM vk_positions WHERE account_id = $1 AND symbol = $2 AND side = $3 AND status = 'open'", [a.id, symbol, p.side]);
+    if (!pos || !sl) return fin("ignored", "nothing_to_close", { symbol });
+    if (opts.dryRun) return fin("tested", null, { would: "move_stop", symbol, stop: sl.value });
+    const plan = { ...pos.plan, stop: sl.mode === "price" ? { mode: "price", value: sl.value } : sl };
+    await q("UPDATE vk_positions SET plan = $2, resync = true, updated_at = now() WHERE id = $1", [pos.id, JSON.stringify(plan)]);
+    return fin("executed", null, { moved: sl.value, symbol }, pos.id);
+  }
+
   if (p.action === "close") {
     const sides = p.side ? [p.side] : open.map((x) => x.side);
     const targets = sides.filter((sd) => open.some((x) => x.side === sd));

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Account } from "@/lib/api";
 import { useT, type Key } from "@/lib/i18n";
@@ -7,14 +7,14 @@ import { Alert, Badge, Button, Card, Empty, Input, Modal, Spinner, Switch, cx } 
 import { DEFAULT_PLAN, PlanEditor, planProblems, type Plan } from "@/components/terminal/PlanEditor";
 import { GridsSection } from "./Grids";
 
-type Settings = {
+export type Settings = {
   amountMode: "usdt" | "percent"; amount: number; leverage: number; marginMode: "isolated" | "cross"; plan: Plan;
   allowLong: boolean; allowShort: boolean; onOpposite: "skip" | "close" | "reverse"; onSame: "skip" | "add"; ttlSec: number; allowOverrides: boolean;
 };
 type Bot = { id: number; account_id: number; name: string; token_hint: string; settings: Settings; enabled: boolean; signals24h: number; channels: Array<{ chatId: string; title: string | null }> };
 type Signal = { id: number; bot_id: number; bot_name: string; raw: string; status: string; reason: string | null; detail: any; test: boolean; received_at: string };
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   amountMode: "usdt", amount: 10, leverage: 10, marginMode: "isolated", plan: DEFAULT_PLAN,
   allowLong: true, allowShort: true, onOpposite: "skip", onSame: "skip", ttlSec: 60, allowOverrides: true,
 };
@@ -176,7 +176,8 @@ function TestBox({ bot }: { bot: Bot }) {
   );
 }
 
-function BotEditor({ bot, accounts, onClose, onSaved }: { bot: Bot | null; accounts: Account[]; onClose: () => void; onSaved: (b: Bot, token?: string) => void }) {
+/** Also used for autotrading by VECTOR's bots: `submit` replaces the save, and there is no name. */
+export function BotEditor({ bot, accounts, onClose, onSaved, submit, title, extra }: { bot: Bot | null; accounts: Account[]; onClose: () => void; onSaved: (b: Bot, token?: string) => void; submit?: (accountId: number, s: Settings) => Promise<void>; title?: string; extra?: React.ReactNode }) {
   const t = useT();
   const [name, setName] = useState(bot?.name ?? "");
   const [accountId, setAccountId] = useState<number>(bot?.account_id ?? accounts[0]?.id ?? 0);
@@ -189,11 +190,13 @@ function BotEditor({ bot, accounts, onClose, onSaved }: { bot: Bot | null; accou
   const save = async () => {
     setBusy(true); setErr(null);
     try {
+      if (submit) { await submit(accountId, s); return; }
       const body = { name, accountId, settings: s };
       if (bot) { const r = await api<{ bot: Bot }>(`/bots/${bot.id}`, { method: "PUT", body }); onSaved(r.bot); }
       else { const r = await api<{ bot: Bot; token: string }>("/bots", { body }); onSaved(r.bot, r.token); }
     } catch (e) {
       const code = e instanceof ApiError ? e.code : "error";
+      if (code === "futures_account_required") { setErr(t("shop.futuresOnly")); return; }
       if (code === "plan_limit") { setErr(t("err.plan_limit", { key: t("bill.bots") })); return; }
       const k = `plan.${code}` as Key;
       setErr(t(k) !== k ? t(k) : t("err.generic"));
@@ -209,9 +212,10 @@ function BotEditor({ bot, accounts, onClose, onSaved }: { bot: Bot | null; accou
   );
 
   return (
-    <Modal open onClose={onClose} title={bot ? bot.name : t("bots.new")} wide>
+    <Modal open onClose={onClose} title={title ?? (bot ? bot.name : t("bots.new"))} wide>
       <div className="space-y-4">
-        <Input label={t("bots.name")} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+        {extra}
+        {!submit && <Input label={t("bots.name")} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />}
         <label className="block">
           <span className="mb-1.5 block text-sm text-muted">{t("bots.account")}</span>
           <select className="h-11 w-full rounded-lg border border-line bg-bg px-3" value={accountId} onChange={(e) => setAccountId(Number(e.target.value))}>
@@ -254,7 +258,7 @@ function BotEditor({ bot, accounts, onClose, onSaved }: { bot: Bot | null; accou
           <PlanEditor plan={s.plan} onChange={(plan) => set({ plan })} side="long" entry={null} prec={2} />
         </div>
         {err && <Alert>{err}</Alert>}
-        <Button className="w-full" size="lg" onClick={save} disabled={busy || !name.trim() || !accountId || !(s.amount > 0) || bad}>{busy ? <Spinner /> : t("bots.save")}</Button>
+        <Button className="w-full" size="lg" onClick={save} disabled={busy || (!submit && !name.trim()) || !accountId || !(s.amount > 0) || bad}>{busy ? <Spinner /> : t("bots.save")}</Button>
       </div>
     </Modal>
   );

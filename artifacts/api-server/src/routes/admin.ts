@@ -5,6 +5,7 @@ import { one, q } from "../db";
 import { effectivePlan, PLANS, usage, type PlanId } from "../engine/plans";
 import { notify } from "../telegram/notify";
 import { actorOf, requireUser } from "./auth";
+import { adminAssign, adminPayments } from "./shop";
 
 const admins = () => (process.env.VEKTOR_ADMIN_EMAILS ?? "").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
@@ -57,6 +58,16 @@ adminRouter.post("/users/:id/plan", async (req, res) => {
   res.json({ ok: true, until });
 });
 
+adminRouter.get("/payments", async (_req, res) => { res.json(await adminPayments()); });
+adminRouter.post("/incoming/:tx/assign", async (req, res) => {
+  const ok = await adminAssign(String(req.params.tx), Number(req.body?.invoiceId));
+  res.status(ok ? 200 : 404).json({ ok });
+});
+adminRouter.post("/incoming/:tx/ignore", async (req, res) => {
+  await q("UPDATE vk_incoming SET status = 'ignored' WHERE tx_hash = $1 AND status = 'unmatched'", [String(req.params.tx)]);
+  res.json({ ok: true });
+});
+
 /** Hourly: 3 days / 1 day before the end and at the end — one message each. */
 export function startPlanReminders() {
   const tick = async () => {
@@ -67,7 +78,7 @@ export function startPlanReminders() {
       const key = left <= 0 ? "ended" : left <= 86_400_000 ? "1d" : "3d";
       if (u.plan_notified === key) continue;
       await q("UPDATE vk_users SET plan_notified = $2 WHERE id = $1", [u.id, key]);
-      const contact = process.env.VEKTOR_BILLING_CONTACT ? ` ${process.env.VEKTOR_BILLING_CONTACT}` : "";
+      const contact = ""; // payment is inside VECTOR now: Settings → Subscription
       await notify(u.id, "subscription", key === "ended"
         ? { ru: `⌛ Подписка VECTOR закончилась — действуют лимиты бесплатного тарифа. Открытые позиции продолжают вестись. Продлить:${contact || " Настройки → Подписка"}.`, en: `⌛ Your VECTOR subscription has ended — Free limits apply. Open positions stay managed. Renew:${contact || " Settings → Subscription"}.` }
         : { ru: `⏳ Подписка VECTOR заканчивается ${key === "1d" ? "завтра" : "через 3 дня"}. Продлить:${contact || " Настройки → Подписка"}.`, en: `⏳ Your VECTOR subscription ends ${key === "1d" ? "tomorrow" : "in 3 days"}. Renew:${contact || " Settings → Subscription"}.` });

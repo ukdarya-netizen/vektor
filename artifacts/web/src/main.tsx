@@ -15,6 +15,7 @@ import { PositionsPage } from "@/pages/Positions";
 import { SettingsPage } from "@/pages/Settings";
 import { TerminalPage } from "@/pages/Terminal";
 import { SignalsPage } from "@/pages/Signals";
+import { BotsPage } from "./pages/Bots";
 import { JournalPage } from "@/pages/Journal";
 import "./index.css";
 
@@ -59,6 +60,7 @@ function App() {
             <Route path="/terminal"><TerminalPage /></Route>
             <Route path="/positions"><PositionsPage /></Route>
             <Route path="/signals"><SignalsPage /></Route>
+            <Route path="/bots"><BotsPage /></Route>
             <Route path="/portfolio"><PortfolioPage /></Route>
             <Route path="/journal"><JournalPage /></Route>
             <Route path="/settings/:tab?"><SettingsPage user={user} onUserChange={reloadMe} /></Route>

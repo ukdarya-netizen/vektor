@@ -365,4 +365,46 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       UPDATE vk_users SET plan_until = created_at + interval '14 days' WHERE plan = 'trial' AND plan_until IS NULL;
     `,
   },
+  {
+    id: 14,
+    name: "crypto payments, entitlements, bot products",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vk_invoices (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        items jsonb NOT NULL,
+        amount_micro bigint NOT NULL,
+        status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'expired', 'cancelled')),
+        tx_hash text UNIQUE,
+        from_address text,
+        user_txid text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        expires_at timestamptz NOT NULL,
+        paid_at timestamptz
+      );
+      -- No two waiting invoices with the same amount: the amount identifies the payer.
+      CREATE UNIQUE INDEX IF NOT EXISTS vk_invoices_pending_amount ON vk_invoices (amount_micro) WHERE status = 'pending';
+      CREATE INDEX IF NOT EXISTS vk_invoices_user ON vk_invoices (user_id, id DESC);
+      CREATE TABLE IF NOT EXISTS vk_incoming (
+        tx_hash text PRIMARY KEY,
+        from_address text NOT NULL,
+        amount_micro bigint NOT NULL,
+        at timestamptz NOT NULL,
+        invoice_id bigint REFERENCES vk_invoices(id),
+        status text NOT NULL DEFAULT 'matched' CHECK (status IN ('matched', 'unmatched', 'assigned', 'ignored')),
+        note text,
+        seen_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS vk_entitlements (
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        product text NOT NULL,
+        until timestamptz NOT NULL,
+        granted_remote boolean NOT NULL DEFAULT false,
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, product)
+      );
+      ALTER TABLE vk_bots ADD COLUMN IF NOT EXISTS provider text;
+      CREATE UNIQUE INDEX IF NOT EXISTS vk_bots_provider_user ON vk_bots (user_id, provider) WHERE provider IS NOT NULL;
+    `,
+  },
 ];

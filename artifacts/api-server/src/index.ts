@@ -11,6 +11,8 @@ import { gridsRouter } from "./routes/grids";
 import { copilotRouter } from "./routes/copilot";
 import { teamRouter } from "./routes/team";
 import { adminRouter, billingRouter, startPlanReminders } from "./routes/admin";
+import { providerRouter, shopRouter } from "./routes/shop";
+import { startPaymentLoop } from "./billing/payments";
 import { startGridLoop } from "./engine/grid";
 import { startEngine } from "./engine/manager";
 import { clientFor } from "./exchanges/client";
@@ -28,11 +30,13 @@ if (missing.length) {
 
 const app = express();
 app.set("trust proxy", true);
-app.use(express.json({ limit: "256kb" }));
+// Keep the raw body: signed requests (bots → /api/provider) are verified byte for byte.
+app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => { (req as any).rawBody = buf.toString("utf8"); } }));
 app.use(cookieParser());
 
 app.get("/api/healthz", (_req, res) => { res.json({ ok: true }); });
 app.use("/api/hook", hookRouter); // public webhook — before any signed-in router
+app.use("/api/provider", providerRouter); // signed server-to-server signals from the bots
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/managed", managedRouter);
@@ -40,6 +44,7 @@ app.use("/api/grids", gridsRouter);
 app.use("/api/copilot", copilotRouter);
 app.use("/api/team", teamRouter);
 app.use("/api/billing", billingRouter);
+app.use("/api/shop", shopRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api", accountsRouter);
 app.use("/api", tradeRouter);
@@ -68,6 +73,7 @@ if (process.env.NODE_ENV === "production" ? process.env.ENGINE_ENABLED !== "0" :
   startEngine({ client: clientFor });
   startGridLoop(clientFor);
   startPlanReminders();
+  startPaymentLoop();
   console.log("[engine] position manager started");
 }
 // Paper accounts: limit/stop orders and liquidations fire even when nobody is looking.
