@@ -12,6 +12,7 @@ import type { AccountRow } from "../exchanges/client";
 import { matchSymbol } from "../signals/parse";
 import { limitsOf } from "../engine/risk";
 import { requireUser, userOf } from "./auth";
+import { effectivePlan } from "../engine/plans";
 
 export const copilotRouter = Router();
 copilotRouter.use(requireUser);
@@ -90,6 +91,7 @@ copilotRouter.post("/", async (req, res) => {
   const user = userOf(req);
   const b = z.object({ text: z.string().trim().min(1).max(2000), accountId: z.number().int().nullable().optional(), symbol: z.string().nullable().optional() }).safeParse(req.body);
   if (!b.success) { res.status(400).json({ error: "bad_request" }); return; }
+  if (!(await effectivePlan(user.id)).limits.copilot) { res.status(402).json({ error: "plan_limit", key: "copilot" }); return; }
 
   // What the model may know: the user's own accounts, positions, managed stops, limits. No keys.
   const accounts = await q<AccountRow & { label: string; status: string }>("SELECT * FROM vk_exchange_accounts WHERE user_id = $1 AND status <> 'paused' ORDER BY id", [user.id]);

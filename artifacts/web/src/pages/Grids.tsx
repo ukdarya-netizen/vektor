@@ -83,6 +83,7 @@ function GridEditor({ onClose, onDone }: { onClose: () => void; onDone: () => vo
     try { await api("/grids", { body: { name: f.name || `${f.coin} grid`, accountId, settings } }); onDone(); }
     catch (e) {
       if (!(e instanceof ApiError)) { setErr(t("err.generic")); return; }
+      if (e.code === "plan_limit") { setErr(t("err.plan_limit", { key: t("bill.grids") })); return; }
       const code = String(e.body?.exchangeError?.code ?? e.code);
       const k = `grid.${code}` as Key;
       setErr(t(k) !== k ? t(k) : e.body?.exchangeError?.message ?? code);

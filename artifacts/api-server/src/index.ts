@@ -9,6 +9,8 @@ import { managedRouter } from "./routes/managed";
 import { botsRouter, hookRouter } from "./routes/bots";
 import { gridsRouter } from "./routes/grids";
 import { copilotRouter } from "./routes/copilot";
+import { teamRouter } from "./routes/team";
+import { adminRouter, billingRouter, startPlanReminders } from "./routes/admin";
 import { startGridLoop } from "./engine/grid";
 import { startEngine } from "./engine/manager";
 import { clientFor } from "./exchanges/client";
@@ -36,6 +38,9 @@ app.use("/api/notifications", notificationsRouter);
 app.use("/api/managed", managedRouter);
 app.use("/api/grids", gridsRouter);
 app.use("/api/copilot", copilotRouter);
+app.use("/api/team", teamRouter);
+app.use("/api/billing", billingRouter);
+app.use("/api/admin", adminRouter);
 app.use("/api", accountsRouter);
 app.use("/api", tradeRouter);
 app.use("/api", botsRouter);
@@ -62,6 +67,7 @@ if (process.env.ACCOUNT_HEALTH_CHECKS !== "0") setInterval(() => void healthLoop
 if (process.env.NODE_ENV === "production" ? process.env.ENGINE_ENABLED !== "0" : process.env.ENGINE_ENABLED === "1") {
   startEngine({ client: clientFor });
   startGridLoop(clientFor);
+  startPlanReminders();
   console.log("[engine] position manager started");
 }
 // Paper accounts: limit/stop orders and liquidations fire even when nobody is looking.

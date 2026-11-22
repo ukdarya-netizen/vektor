@@ -5,6 +5,7 @@ import { one, q } from "../db";
 import { keyedHash, randomToken } from "../crypto";
 import { planErrors, planSchema } from "../engine/plan";
 import { NO_LIMITS, limitsOf } from "../engine/risk";
+import { checkLimit } from "../engine/plans";
 import { botSettingsSchema, enqueueSignal, processSignal, receive } from "../signals/process";
 import { require2fa, requireUser, userOf } from "./auth";
 
@@ -58,6 +59,8 @@ async function validSettings(userId: number, body: unknown) {
 /** Creating a bot returns the webhook token ONCE; only its hash is stored. */
 botsRouter.post("/bots", async (req, res) => {
   const user = userOf(req);
+  const lim = await checkLimit(user.id, "bots");
+  if (lim) { res.status(402).json(lim); return; }
   const v = await validSettings(user.id, req.body);
   if (!("data" in v)) { res.status(400).json(v); return; }
   const token = randomToken(24);

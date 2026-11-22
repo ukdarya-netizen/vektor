@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Account, type User } from "@/lib/api";
+import { api, workspace, type Account, type User, type Workspace } from "@/lib/api";
 import { useT, type Key } from "@/lib/i18n";
 import { Badge, cx } from "./ui";
 
@@ -29,11 +29,15 @@ function ModeBadge() {
   return <Badge tone={live ? "down" : testnet ? "warn" : "accent"}>{live ? t("mode.live") : testnet ? t("mode.testnet") : t("mode.paper")}</Badge>;
 }
 
-export function Layout({ user, children }: { user: User; children: ReactNode }) {
+export function Layout({ user, workspaces = [], children }: { user: User; workspaces?: Workspace[]; children: ReactNode }) {
   const t = useT();
   const [loc] = useLocation();
   const qc = useQueryClient();
+  const ws = workspace.get();
+  const acting = workspaces.find((w) => w.id === ws) ?? null;
+  const switchTo = (id: number | null) => { workspace.set(id); qc.clear(); window.location.reload(); };
   const signOut = async () => {
+    workspace.set(null);
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
     qc.clear();
     window.location.href = import.meta.env.BASE_URL;
@@ -54,7 +58,20 @@ export function Layout({ user, children }: { user: User; children: ReactNode }) 
               {t(n.key)}
             </Link>
           ))}
+          {user.admin && (
+            <Link href="/admin" className={cx("flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition", loc.startsWith("/admin") ? "bg-accent/15 text-text" : "text-muted hover:bg-panel-2 hover:text-text")}>
+              <Icon d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" />{t("adm.title")}
+            </Link>
+          )}
         </nav>
+        {workspaces.length > 0 && (
+          <div className="border-t border-line p-3">
+            <select className="h-9 w-full rounded-lg border border-line bg-bg px-2 text-xs" value={ws ?? 0} onChange={(e) => switchTo(Number(e.target.value) || null)}>
+              <option value={0}>{t("ws.mine")}</option>
+              {workspaces.map((w) => <option key={w.id} value={w.id}>{w.email} · {t(`role.${w.role}` as Key)}</option>)}
+            </select>
+          </div>
+        )}
         <div className="border-t border-line p-3 text-xs text-muted">
           <div className="truncate px-2 pb-2" title={user.email}>{user.email}</div>
           <button onClick={signOut} className="w-full rounded-md px-2 py-1.5 text-left hover:bg-panel-2 hover:text-text">{t("common.signout")}</button>
@@ -68,6 +85,12 @@ export function Layout({ user, children }: { user: User; children: ReactNode }) 
           {/* The terminal shows the mode of the selected account itself. */}
           {!loc.startsWith("/terminal") && <ModeBadge />}
         </header>
+        {acting && (
+          <div className="flex items-center justify-between gap-2 border-b border-warn/30 bg-warn/10 px-4 py-1.5 text-xs text-warn md:px-6">
+            <span>{t("ws.acting", { email: acting.email, role: t(`role.${acting.role}` as Key) })}</span>
+            <button className="underline" onClick={() => switchTo(null)}>{t("ws.mine")}</button>
+          </div>
+        )}
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-24 md:px-6 md:pb-6">{children}</main>
         {/* Mobile: bottom tabs */}
         <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-panel md:hidden">

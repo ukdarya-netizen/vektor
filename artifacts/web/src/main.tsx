@@ -2,7 +2,8 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, Route, Router, Switch } from "wouter";
-import { api, ApiError, setTwoFactorPrompt, type User } from "@/lib/api";
+import { api, ApiError, setTwoFactorPrompt, workspace, type User, type Workspace } from "@/lib/api";
+import { AdminPage } from "@/pages/Admin";
 import { translate } from "@/lib/i18n";
 import { browserLang, LangProvider, useT, type Lang } from "@/lib/i18n";
 import { Layout } from "@/components/Layout";
@@ -23,9 +24,12 @@ const qc = new QueryClient({
 
 function App() {
   const client = useQueryClient();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ user: User }>("/auth/me") });
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ user: User; workspaces: Workspace[] }>("/auth/me") });
   const [guestLang, setGuestLang] = useState<Lang>(() => (localStorage.getItem("vk_lang") as Lang) || browserLang());
   const user = me.data?.user;
+  const workspaces = me.data?.workspaces ?? [];
+  // A workspace the user is no longer in → back to their own account.
+  useEffect(() => { const ws = workspace.get(); if (me.data && ws && !workspaces.some((w) => w.id === ws)) { workspace.set(null); window.location.reload(); } }, [me.data]);
   const lang: Lang = user?.lang ?? guestLang;
 
   useEffect(() => { document.documentElement.lang = lang; setTwoFactorPrompt(() => prompt(translate(lang, "tfa.prompt"))); }, [lang]);
@@ -50,7 +54,7 @@ function App() {
   return (
     <LangProvider lang={lang}>
       {!user.onboarded ? <Onboarding onFinish={reloadMe} /> : (
-        <Layout user={user}>
+        <Layout user={user} workspaces={workspaces}>
           <Switch>
             <Route path="/terminal"><TerminalPage /></Route>
             <Route path="/positions"><PositionsPage /></Route>
@@ -58,6 +62,7 @@ function App() {
             <Route path="/portfolio"><PortfolioPage /></Route>
             <Route path="/journal"><JournalPage /></Route>
             <Route path="/settings/:tab?"><SettingsPage user={user} onUserChange={reloadMe} /></Route>
+            {user.admin && <Route path="/admin"><AdminPage /></Route>}
             <Route><Redirect to="/terminal" /></Route>
           </Switch>
         </Layout>

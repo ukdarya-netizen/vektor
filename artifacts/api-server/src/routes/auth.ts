@@ -17,7 +17,13 @@ const PER_IP_PER_HOUR = 30;
 export const SESSION_DAYS = 30;
 export const COOKIE = "vk_sid";
 
-export type AuthedRequest = Request<any> & { user: { id: number; email: string; lang: string; tz: string; onboarded: boolean }; sessionHash: string };
+export type Role = "owner" | "viewer" | "trader" | "admin";
+type Who = { id: number; email: string; lang: string; tz: string; onboarded: boolean };
+/**
+ * user  = whose data the request works on (the workspace owner when acting in someone's team);
+ * actor = who is signed in, with their role in that workspace.
+ */
+export type AuthedRequest = Request<any> & { user: Who; actor: Who & { role: Role }; sessionHash: string };
 
 const ip = (req: Request) => (req.headers["x-forwarded-for"]?.toString().split(",")[0] ?? req.ip ?? "").trim();
 const normEmail = (e: string) => e.trim().toLowerCase();
@@ -26,6 +32,12 @@ const codeHash = (email: string, code: string) => keyedHash(`code:${email}:${cod
 
 /** The signed-in user of a request that passed requireUser. */
 export const userOf = (req: Request<any>) => (req as unknown as AuthedRequest).user;
+export const actorOf = (req: Request<any>) => (req as unknown as AuthedRequest).actor;
+
+/** Paths that always work on the signed-in person, never on a workspace they act in. */
+const SELF_PATHS = /^\/api\/(auth|team|billing|admin)(\/|$)/;
+/** What a trader may change in someone's workspace; everything else is read-only for them. */
+const TRADER_WRITES = /^\/api\/(orders|positions\/close|managed|grids|copilot|templates)(\/|$|\?)/;
 
 export async function requireUser(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = req.cookies?.[COOKIE];
@@ -37,8 +49,26 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
   if (!row) { res.clearCookie(COOKIE, { path: "/" }); res.status(401).json({ error: "not_signed_in" }); return; }
   // Sliding session: touch at most once a minute.
   void q("UPDATE vk_sessions SET last_seen_at = now() WHERE token_hash = $1 AND last_seen_at < now() - interval '1 minute'", [h]).catch(() => undefined);
-  (req as AuthedRequest).user = { id: Number(row.id), email: row.email, lang: row.lang, tz: row.tz, onboarded: row.onboarded };
-  (req as AuthedRequest).sessionHash = h;
+  const self: Who = { id: Number(row.id), email: row.email, lang: row.lang, tz: row.tz, onboarded: row.onboarded };
+  const r = req as AuthedRequest;
+  r.sessionHash = h;
+  r.user = self;
+  r.actor = { ...self, role: "owner" };
+  const ws = Number(req.headers["x-workspace"] ?? 0);
+  const path = req.originalUrl.split("?")[0];
+  if (ws && ws !== self.id && !SELF_PATHS.test(path)) {
+    const m = await one<{ role: Role; email: string; lang: string; tz: string }>(
+      `SELECT t.role, u.email, u.lang, u.tz FROM vk_team t JOIN vk_users u ON u.id = t.owner_id
+       WHERE t.owner_id = $1 AND t.member_id = $2 AND t.status = 'active'`, [ws, self.id]);
+    if (!m) { res.status(403).json({ error: "not_a_member" }); return; }
+    if (req.method !== "GET") {
+      if (m.role === "viewer" || (m.role === "trader" && !TRADER_WRITES.test(path))) { res.status(403).json({ error: "role_forbidden", role: m.role }); return; }
+      void q("INSERT INTO vk_team_activity (owner_id, actor_id, actor_email, action) VALUES ($1, $2, $3, $4)", [ws, self.id, self.email, `${req.method} ${path}`.slice(0, 200)]).catch(() => undefined);
+    }
+    // Data of the workspace owner; messages in the actor's own language.
+    r.user = { id: ws, email: m.email, lang: self.lang, tz: m.tz, onboarded: true };
+    r.actor = { ...self, role: m.role };
+  }
   next();
 }
 
@@ -91,7 +121,7 @@ authRouter.post("/verify", async (req, res) => {
   await q("UPDATE vk_email_codes SET used_at = now() WHERE id = $1", [row.id]);
   const lang = req.body?.lang === "en" ? "en" : "ru";
   const user = await one<{ id: number; created: boolean }>(
-    `INSERT INTO vk_users (email, lang, last_login_at) VALUES ($1, $2, now())
+    `INSERT INTO vk_users (email, lang, last_login_at, plan, plan_until) VALUES ($1, $2, now(), 'trial', now() + interval '14 days')
      ON CONFLICT (email) DO UPDATE SET last_login_at = now()
      RETURNING id, (xmax = 0) AS created`, [normEmail(email), lang]);
   const u2 = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [user!.id]);
@@ -148,7 +178,7 @@ authRouter.post("/2fa/login", async (req, res) => {
  * The code comes in the X-2FA-Code header; without it → 403 need_2fa_code, the UI asks and repeats.
  */
 export async function require2fa(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const user = userOf(req);
+  const user = actorOf(req);
   const u = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [user.id]);
   if (!u?.totp_enabled) { next(); return; }
   const code = String(req.headers["x-2fa-code"] ?? "");
@@ -159,13 +189,13 @@ export async function require2fa(req: Request, res: Response, next: NextFunction
 }
 
 authRouter.get("/2fa", requireUser, async (req, res) => {
-  const u = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [userOf(req).id]);
+  const u = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [actorOf(req).id]);
   res.json({ enabled: Boolean(u?.totp_enabled) });
 });
 
 /** New secret (not active until confirmed with a code). */
 authRouter.post("/2fa/setup", requireUser, async (req, res) => {
-  const user = userOf(req);
+  const user = actorOf(req);
   const u = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [user.id]);
   if (u?.totp_enabled) { res.status(409).json({ error: "already_enabled" }); return; }
   const secret = newSecret();
@@ -174,7 +204,7 @@ authRouter.post("/2fa/setup", requireUser, async (req, res) => {
 });
 
 authRouter.post("/2fa/enable", requireUser, async (req, res) => {
-  const user = userOf(req);
+  const user = actorOf(req);
   const r = await checkCode(user.id, String(req.body?.code ?? ""));
   if (r !== "ok") { res.status(400).json({ error: r === "locked" ? "too_many_attempts" : r === "off" ? "setup_first" : "wrong_2fa" }); return; }
   await q("UPDATE vk_users SET totp_enabled = true WHERE id = $1", [user.id]);
@@ -182,7 +212,7 @@ authRouter.post("/2fa/enable", requireUser, async (req, res) => {
 });
 
 authRouter.post("/2fa/disable", requireUser, async (req, res) => {
-  const user = userOf(req);
+  const user = actorOf(req);
   const r = await checkCode(user.id, String(req.body?.code ?? ""));
   if (r !== "ok") { res.status(400).json({ error: r === "locked" ? "too_many_attempts" : "wrong_2fa" }); return; }
   await q("UPDATE vk_users SET totp_enabled = false, totp_secret_enc = NULL, totp_last_step = NULL WHERE id = $1", [user.id]);
@@ -190,12 +220,15 @@ authRouter.post("/2fa/disable", requireUser, async (req, res) => {
 });
 
 authRouter.get("/me", requireUser, async (req, res) => {
-  const user = userOf(req);
-  res.json({ user });
+  const user = actorOf(req);
+  const p = await one("SELECT plan, plan_until FROM vk_users WHERE id = $1", [user.id]);
+  const workspaces = await q(`SELECT t.owner_id AS id, u.email, t.role FROM vk_team t JOIN vk_users u ON u.id = t.owner_id WHERE t.member_id = $1 AND t.status = 'active' ORDER BY u.email`, [user.id]);
+  const admins = (process.env.VEKTOR_ADMIN_EMAILS ?? "").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
+  res.json({ user: { ...user, plan: p?.plan, planUntil: p?.plan_until, admin: admins.includes(user.email) }, workspaces });
 });
 
 authRouter.patch("/me", requireUser, async (req, res) => {
-  const user = userOf(req);
+  const user = actorOf(req);
   const body = z.object({
     lang: z.enum(["ru", "en"]).optional(),
     tz: z.string().max(64).refine((tz) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } }).optional(),

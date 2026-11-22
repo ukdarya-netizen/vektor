@@ -7,6 +7,7 @@ import { closePosition, evaluate, marketsCached, openEntry } from "../exchanges/
 import { subscribe } from "../exchanges/feed";
 import { snapshot, STABLES } from "../exchanges/snapshot";
 import { requireUser, userOf } from "./auth";
+import { needsApproval, queueApproval } from "./team";
 import { planSchema } from "../engine/plan";
 
 export const tradeRouter = Router();
@@ -99,6 +100,10 @@ tradeRouter.post("/orders", async (req, res) => {
   if (!b.success) { res.status(400).json({ error: "bad_request" }); return; }
   const a = await account(req, res, b.data.accountId);
   if (!a) return;
+  if (await needsApproval(req)) {
+    res.status(202).json({ approval: await queueApproval(req, b.data), status: "pending_approval" });
+    return;
+  }
   const r = await openEntry(a, user, b.data, { kind: "terminal", label: user.lang === "en" ? "Terminal" : "Терминал" });
   res.status(r.http).json(r.body);
 });

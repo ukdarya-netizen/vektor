@@ -50,6 +50,7 @@ export function ConnectExchange({ open, onClose, onConnected }: { open: boolean;
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.code === "confirm_no_withdraw") { setConfirmNeeded(true); return; }
+        if (e.code === "plan_limit") { setErr(t("err.plan_limit", { key: t(`bill.${e.body?.key}` as Key) })); return; }
         if (e.code === "key_check_failed") {
           const c = e.body?.exchangeError?.code as string;
           const known = t(`ex.err.code.${c}` as Key);

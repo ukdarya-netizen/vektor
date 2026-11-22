@@ -7,6 +7,7 @@ import { dropClient, exchangeError, makeClient, type AccountRow, type Credential
 import { readPermissions, type KeyPermissions } from "../exchanges/permissions";
 import { snapshot } from "../exchanges/snapshot";
 import { resetPaper } from "../exchanges/paper";
+import { checkLimit } from "../engine/plans";
 import { require2fa, requireUser, userOf, type AuthedRequest } from "./auth";
 import { notify } from "../telegram/notify";
 import { T } from "../telegram/texts";
@@ -83,6 +84,8 @@ accountsRouter.post("/accounts", require2fa, async (req, res) => {
   const p = addSchema.safeParse(req.body);
   if (!p.success) { res.status(400).json({ error: "bad_request" }); return; }
   const b = p.data;
+  const lim = await checkLimit(user.id, "realAccounts");
+  if (lim) { res.status(402).json(lim); return; }
   const item = catalogItem(b.exchange);
   if (!item || !item.tradable) { res.status(400).json({ error: "unknown_exchange" }); return; }
   if (b.market === "swap" && !item.swap) { res.status(400).json({ error: "market_not_supported" }); return; }

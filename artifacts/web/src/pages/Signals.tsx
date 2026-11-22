@@ -194,6 +194,7 @@ function BotEditor({ bot, accounts, onClose, onSaved }: { bot: Bot | null; accou
       else { const r = await api<{ bot: Bot; token: string }>("/bots", { body }); onSaved(r.bot, r.token); }
     } catch (e) {
       const code = e instanceof ApiError ? e.code : "error";
+      if (code === "plan_limit") { setErr(t("err.plan_limit", { key: t("bill.bots") })); return; }
       const k = `plan.${code}` as Key;
       setErr(t(k) !== k ? t(k) : t("err.generic"));
     } finally { setBusy(false); }

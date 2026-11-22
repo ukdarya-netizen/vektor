@@ -8,12 +8,19 @@ const BASE = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api`;
 
 /** Set by the app: asks the user for a 2FA code (protected actions). */
 let askCode: (() => string | null) | null = null;
+/** Team workspace the user acts in (owner id) — sent as X-Workspace. */
+export const workspace = {
+  get: (): number | null => { try { return Number(localStorage.getItem("vk_ws")) || null; } catch { return null; } },
+  set: (id: number | null) => { try { id ? localStorage.setItem("vk_ws", String(id)) : localStorage.removeItem("vk_ws"); } catch { /* ignore */ } },
+};
 export const setTwoFactorPrompt = (f: () => string | null) => { askCode = f; };
 
 export async function api<T = any>(path: string, init: { method?: string; body?: unknown; code?: string } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (init.body !== undefined) headers["content-type"] = "application/json";
   if (init.code) headers["x-2fa-code"] = init.code;
+  const ws = workspace.get();
+  if (ws) headers["x-workspace"] = String(ws);
   const res = await fetch(`${BASE}${path}`, {
     method: init.method ?? (init.body !== undefined ? "POST" : "GET"),
     headers, body: init.body !== undefined ? JSON.stringify(init.body) : undefined, credentials: "include",
@@ -30,7 +37,8 @@ export async function api<T = any>(path: string, init: { method?: string; body?:
   return body as T;
 }
 
-export type User = { id: number; email: string; lang: "ru" | "en"; tz: string; onboarded: boolean };
+export type User = { id: number; email: string; lang: "ru" | "en"; tz: string; onboarded: boolean; plan?: string; planUntil?: string | null; admin?: boolean };
+export type Workspace = { id: number; email: string; role: "viewer" | "trader" | "admin" };
 
 export type ExchangeInfo = {
   id: string; name: string; priority: boolean; verified: boolean; fields: string[];

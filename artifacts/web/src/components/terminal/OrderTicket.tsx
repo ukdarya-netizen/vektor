@@ -93,8 +93,8 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
     if (sd !== side) setSide(sd);
     setBusy(true); setResult(null);
     try {
-      const r = await api<{ order: { status: string } }>("/orders", { body: { ...body, clientRequestId: requestId, plan: futures && planOn ? plan : null } });
-      setResult({ tone: "up", text: r.order.status === "filled" ? t("tr.filled") : t("tr.sent") });
+      const r = await api<{ order?: { status: string }; status?: string }>("/orders", { body: { ...body, clientRequestId: requestId, plan: futures && planOn ? plan : null } });
+      setResult({ tone: "up", text: r.status === "pending_approval" ? t("tr.pendingApproval") : r.order?.status === "filled" ? t("tr.filled") : t("tr.sent") });
       setAmount("");
       setRequestId(uid()); // new order = new id; a retry of the same click keeps the old one
       void qc.invalidateQueries({ queryKey: ["positions"] });
@@ -107,6 +107,7 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
         else if (e.code === "leverage_failed") setResult({ tone: "down", text: t("pf.leverage_failed", { msg: e.body?.exchangeError?.message ?? "" }) });
         else if (e.code === "account_paused") setResult({ tone: "down", text: t("pf.account_paused") });
         else if (e.code === "plan_invalid") setResult({ tone: "down", text: t(`plan.${e.body?.reason}` as Key) });
+        else if (e.code === "role_forbidden") setResult({ tone: "down", text: t("err.role_forbidden") });
         else if (e.code === "risk_limit") setResult({ tone: "down", text: t(`pf.risk.${e.body?.risk?.code}` as Key, { limit: e.body?.risk?.limit ?? "" }) });
         else setResult({ tone: "down", text: e.body?.exchangeError?.message ?? t("err.generic") });
         if (e.body?.order?.status !== "unknown") setRequestId(uid());

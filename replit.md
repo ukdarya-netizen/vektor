@@ -30,6 +30,8 @@
 | `ENGINE_ENABLED` | движок ведения позиций: в опубликованной версии включён сам (выключить — `0`); в dev выключен (включить — `1`) |
 | `ANTHROPIC_API_KEY` | AI-копилот (без ключа кнопка AI отвечает «не настроен»). Модель: `ANTHROPIC_MODEL`, по умолчанию `claude-haiku-5-5` |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | push-уведомления в браузере. Сгенерировать один раз: `node -e "console.log(require('web-push').generateVAPIDKeys())"` в artifacts/api-server; SUBJECT — `mailto:ваша@почта` |
+| `VEKTOR_ADMIN_EMAILS` | почты владельцев платформы через запятую — им виден раздел «Пользователи» (выдача и продление подписок) |
+| `VEKTOR_BILLING_CONTACT` | куда писать за продлением (например `@lucy_support`), показывается в «Подписке» и в напоминаниях |
 | `TELEGRAM_POLLING` | `1` только в опубликованной версии (иначе dev и prod отбирают друг у друга сообщения бота) |
 
 ## Структура

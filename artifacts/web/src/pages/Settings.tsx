@@ -12,6 +12,8 @@ const TABS: Array<{ id: string; key: Key }> = [
   { id: "exchanges", key: "settings.exchanges" },
   { id: "notifications", key: "settings.notifications" },
   { id: "risk", key: "settings.risk" },
+  { id: "team", key: "settings.team" },
+  { id: "billing", key: "settings.billing" },
   { id: "security", key: "settings.security" },
   { id: "language", key: "settings.language" },
 ];
@@ -33,6 +35,8 @@ export function SettingsPage({ user, onUserChange }: { user: User; onUserChange:
       {tab === "exchanges" && <Exchanges />}
       {tab === "notifications" && <Notifications />}
       {tab === "risk" && <Risk />}
+      {tab === "team" && <Team />}
+      {tab === "billing" && <Billing />}
       {tab === "security" && <Security />}
       {tab === "language" && <Language user={user} onChange={onUserChange} />}
     </div>
@@ -343,5 +347,128 @@ function Channels({ data, save }: { data: import("@/components/TelegramConnect")
       <div className="text-xs text-muted">{t("ntf.channelsHint")}</div>
       {err && <Alert tone="warn">{err}</Alert>}
     </Card>
+  );
+}
+
+type TeamData = {
+  members: Array<{ id: number; email: string; role: "viewer" | "trader" | "admin"; status: "invited" | "active" }>;
+  invites: Array<{ id: number; owner_email: string; role: string; status: string }>;
+  settings: { traders_need_approval: boolean };
+  approvals: Array<{ id: number; payload: any; status: string; actor_email: string; created_at: string; result: any }>;
+  activity: Array<{ actor_email: string; action: string; at: string }>;
+};
+
+function Team() {
+  const t = useT();
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["team"], queryFn: () => api<TeamData>("/team"), refetchInterval: 10_000 });
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"viewer" | "trader" | "admin">("trader");
+  const [err, setErr] = useState<string | null>(null);
+  const reload = () => qc.invalidateQueries({ queryKey: ["team"] });
+  if (!data) return <div className="py-10 text-center text-muted"><Spinner /></div>;
+  const invite = async () => {
+    setErr(null);
+    try { await api("/team/members", { body: { email, role } }); setEmail(""); void reload(); }
+    catch (e: any) { setErr(e?.code === "plan_limit" ? t("team.limit") : t("err.generic")); }
+  };
+  const pending = data.approvals.filter((a) => a.status === "pending");
+  return (
+    <div className="space-y-4">
+      {data.invites.length > 0 && (
+        <Card className="p-4">
+          <div className="mb-2 font-medium">{t("team.invites")}</div>
+          {data.invites.map((i) => (
+            <div key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm">
+              <span>{i.owner_email} · {t(`role.${i.role}` as Key)} · {t(i.status === "active" ? "team.active" : "team.invited")}</span>
+              <div className="flex gap-1">
+                {i.status !== "active" && <Button size="sm" onClick={async () => { await api(`/team/invites/${i.id}/accept`, { method: "POST" }); void reload(); void qc.invalidateQueries({ queryKey: ["me"] }); }}>{t("team.accept")}</Button>}
+                <Button size="sm" variant="ghost" onClick={async () => { await api(`/team/invites/${i.id}`, { method: "DELETE" }); void reload(); void qc.invalidateQueries({ queryKey: ["me"] }); }}>{t("team.leave")}</Button>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+      <Card className="space-y-3 p-4">
+        <div className="font-medium">{t("team.members")}</div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-56 flex-1"><Input label={t("team.email")} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <select className="h-11 rounded-lg border border-line bg-bg px-2 text-sm" value={role} onChange={(e) => setRole(e.target.value as any)}>
+            {(["viewer", "trader", "admin"] as const).map((r) => <option key={r} value={r}>{t(`role.${r}` as Key)}</option>)}
+          </select>
+          <Button onClick={invite} disabled={!email.includes("@")}>{t("team.invite")}</Button>
+        </div>
+        <div className="text-xs text-muted">{t("team.roleHint")}</div>
+        {err && <Alert>{err}</Alert>}
+        {!data.members.length ? <div className="text-sm text-muted">{t("team.none")}</div> : (
+          <div className="divide-y divide-line">
+            {data.members.map((m) => (
+              <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <span>{m.email} <span className="text-xs text-muted">· {t(m.status === "active" ? "team.active" : "team.invited")}</span></span>
+                <div className="flex items-center gap-1">
+                  <select className="h-8 rounded-md border border-line bg-bg px-2 text-xs" value={m.role} onChange={async (e) => { await api(`/team/members/${m.id}`, { method: "PATCH", body: { role: e.target.value } }); void reload(); }}>
+                    {(["viewer", "trader", "admin"] as const).map((r) => <option key={r} value={r}>{t(`role.${r}` as Key)}</option>)}
+                  </select>
+                  <Button size="sm" variant="danger" onClick={async () => { await api(`/team/members/${m.id}`, { method: "DELETE" }); void reload(); }}>{t("team.remove")}</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="flex items-center justify-between gap-3 border-t border-line pt-3 text-sm">
+          <span>{t("team.approval")}</span>
+          <Switch checked={data.settings.traders_need_approval} onChange={async (v) => { await api("/team/settings", { method: "PUT", body: { tradersNeedApproval: v } }); void reload(); }} />
+        </label>
+      </Card>
+      {pending.length > 0 && (
+        <Card className="p-4">
+          <div className="mb-2 font-medium">{t("team.approvals")}</div>
+          {pending.map((a) => (
+            <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm">
+              <span>{a.actor_email}: {a.payload.side === "long" ? t("tr.long") : t("tr.short")} {String(a.payload.symbol).split("/")[0]} · {a.payload.amount}{a.payload.amountMode === "percent" ? "%" : " USDT"} · {a.payload.leverage ?? 1}x</span>
+              <div className="flex gap-1">
+                <Button size="sm" onClick={async () => { await api(`/team/approvals/${a.id}`, { body: { approve: true } }).catch(() => undefined); void reload(); }}>{t("team.approve")}</Button>
+                <Button size="sm" variant="ghost" onClick={async () => { await api(`/team/approvals/${a.id}`, { body: { approve: false } }); void reload(); }}>{t("team.reject")}</Button>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+      {data.activity.length > 0 && (
+        <Card className="p-4">
+          <div className="mb-2 font-medium">{t("team.activity")}</div>
+          <div className="max-h-64 space-y-1 overflow-y-auto text-xs">
+            {data.activity.map((a, i) => <div key={i} className="flex gap-3"><span className="w-28 shrink-0 text-muted">{time(a.at, t.lang)}</span><span>{a.actor_email}</span><span className="text-muted">{a.action}</span></div>)}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function Billing() {
+  const t = useT();
+  const { data } = useQuery({ queryKey: ["billing"], queryFn: () => api<{ plan: string; until: string | null; expired: boolean; limits: Record<string, number | boolean | null>; usage: Record<string, number>; name: { ru: string; en: string }; contact: string | null }>("/billing") });
+  if (!data) return <div className="py-10 text-center text-muted"><Spinner /></div>;
+  const lim = (k: string) => { const v = data.limits[k]; return v === null ? t("bill.unlimited") : String(v); };
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="text-sm text-muted">{t("bill.plan")}</div>
+        <div className="mt-1 text-2xl font-semibold">{data.name[t.lang]}</div>
+        {data.until && !data.expired && <div className="mt-1 text-sm text-muted">{t("bill.until", { d: new Date(data.until).toLocaleDateString(t.lang === "ru" ? "ru-RU" : "en-GB", { day: "numeric", month: "long", year: "numeric" }) })}</div>}
+        {data.expired && <div className="mt-2"><Alert tone="warn">{t("bill.expired")}</Alert></div>}
+      </Card>
+      <Card className="divide-y divide-line px-4">
+        {(["realAccounts", "bots", "grids", "teamMembers"] as const).map((k) => (
+          <div key={k} className="flex items-center justify-between py-3 text-sm"><span>{t(`bill.${k}` as Key)}</span><span className="num">{data.usage[k] ?? 0} / {lim(k)}</span></div>
+        ))}
+        <div className="flex items-center justify-between py-3 text-sm"><span>{t("bill.copilot")}</span><span>{data.limits.copilot ? "✓" : "—"}</span></div>
+      </Card>
+      <Card className="p-4 text-sm">
+        <div className="font-medium">{t("bill.renew")}</div>
+        <div className="mt-1 text-muted">{data.contact ? t("bill.renewText", { c: data.contact }) : t("bill.renewNoContact")}</div>
+      </Card>
+    </div>
   );
 }

@@ -29,7 +29,7 @@ export function Copilot({ accountId, symbol, managed, positions }: { accountId: 
       if (r.draft.tool === "answer") setMsg({ tone: "accent", text: r.draft.input.text });
       else setDraft(r.draft);
     } catch (e) {
-      setMsg({ tone: "down", text: e instanceof ApiError && e.code === "copilot_not_configured" ? t("ai.notConfigured") : (e as any)?.body?.message ?? t("err.generic") });
+      setMsg({ tone: "down", text: e instanceof ApiError && e.code === "copilot_not_configured" ? t("ai.notConfigured") : e instanceof ApiError && e.code === "plan_limit" ? t("err.plan_limit", { key: t("bill.copilot") }) : (e as any)?.body?.message ?? t("err.generic") });
     } finally { setBusy(false); }
   };
 

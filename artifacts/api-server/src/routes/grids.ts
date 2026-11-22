@@ -4,6 +4,7 @@ import { one, q } from "../db";
 import { clientFor, exchangeError, type AccountRow } from "../exchanges/client";
 import { gridLevels, gridQty, gridSettingsSchema, startGrid, stopGrid } from "../engine/grid";
 import { requireUser, userOf } from "./auth";
+import { checkLimit } from "../engine/plans";
 
 export const gridsRouter = Router();
 gridsRouter.use(requireUser);
@@ -27,6 +28,8 @@ gridsRouter.post("/", async (req, res) => {
   const user = userOf(req);
   const b = z.object({ name: z.string().trim().min(1).max(60), accountId: z.number().int(), settings: gridSettingsSchema }).safeParse(req.body);
   if (!b.success) { res.status(400).json({ error: b.error.issues[0]?.message ?? "bad_request" }); return; }
+  const lim = await checkLimit(user.id, "grids");
+  if (lim) { res.status(402).json(lim); return; }
   const a = await one<AccountRow & { label: string; status: string }>("SELECT * FROM vk_exchange_accounts WHERE id = $1 AND user_id = $2", [b.data.accountId, user.id]);
   if (!a) { res.status(404).json({ error: "account_not_found" }); return; }
   if (a.status === "paused") { res.status(409).json({ error: "account_paused" }); return; }

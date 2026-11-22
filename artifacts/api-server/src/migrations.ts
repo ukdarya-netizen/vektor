@@ -321,4 +321,48 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       );
     `,
   },
+  {
+    id: 13,
+    name: "team workspaces, approvals, subscriptions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vk_team (
+        id bigserial PRIMARY KEY,
+        owner_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        email text NOT NULL,
+        member_id bigint REFERENCES vk_users(id) ON DELETE CASCADE,
+        role text NOT NULL CHECK (role IN ('viewer', 'trader', 'admin')),
+        status text NOT NULL DEFAULT 'invited' CHECK (status IN ('invited', 'active')),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (owner_id, email)
+      );
+      CREATE TABLE IF NOT EXISTS vk_team_settings (
+        owner_id bigint PRIMARY KEY REFERENCES vk_users(id) ON DELETE CASCADE,
+        traders_need_approval boolean NOT NULL DEFAULT false
+      );
+      CREATE TABLE IF NOT EXISTS vk_approvals (
+        id bigserial PRIMARY KEY,
+        owner_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        actor_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        payload jsonb NOT NULL,
+        status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'failed')),
+        result jsonb,
+        decided_by bigint,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        decided_at timestamptz
+      );
+      CREATE TABLE IF NOT EXISTS vk_team_activity (
+        id bigserial PRIMARY KEY,
+        owner_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        actor_id bigint NOT NULL,
+        actor_email text NOT NULL,
+        action text NOT NULL,
+        at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS vk_team_activity_owner ON vk_team_activity (owner_id, id DESC);
+      ALTER TABLE vk_users ADD COLUMN IF NOT EXISTS plan text NOT NULL DEFAULT 'trial';
+      ALTER TABLE vk_users ADD COLUMN IF NOT EXISTS plan_until timestamptz;
+      ALTER TABLE vk_users ADD COLUMN IF NOT EXISTS plan_notified text;
+      UPDATE vk_users SET plan_until = created_at + interval '14 days' WHERE plan = 'trial' AND plan_until IS NULL;
+    `,
+  },
 ];
