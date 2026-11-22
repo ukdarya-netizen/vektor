@@ -9,6 +9,8 @@ import { managedRouter } from "./routes/managed";
 import { botsRouter, hookRouter } from "./routes/bots";
 import { startEngine } from "./engine/manager";
 import { clientFor } from "./exchanges/client";
+import { paperTick } from "./exchanges/paper";
+import { one } from "./db";
 import { pump } from "./telegram/outbox";
 import { startPolling } from "./telegram/bot";
 
@@ -56,3 +58,5 @@ if (process.env.NODE_ENV === "production" ? process.env.ENGINE_ENABLED !== "0" :
   startEngine({ client: clientFor });
   console.log("[engine] position manager started");
 }
+// Paper accounts: limit/stop orders and liquidations fire even when nobody is looking.
+setInterval(() => void paperTick((id) => one("SELECT * FROM vk_exchange_accounts WHERE id = $1", [id])).catch((e) => console.error("[paper]", e)), 3_000).unref();

@@ -26,7 +26,7 @@ export type ExchangeInfo = {
 };
 
 export type Account = {
-  id: number; exchange: string; label: string; market: "spot" | "swap"; env: "live" | "testnet"; key_hint: string;
+  id: number; exchange: string; label: string; market: "spot" | "swap"; env: "live" | "testnet" | "paper"; key_hint: string;
   permissions: { source: "exchange" | "unknown"; withdraw: boolean | null; trade: boolean | null; futures: boolean | null; ipRestricted: boolean | null };
   withdraw_check: "verified_off" | "user_confirmed"; status: "ok" | "error" | "paused";
   last_check_at: string | null; last_error: string | null; created_at: string;
@@ -42,5 +42,5 @@ export type Snapshot = {
   accountId: number; at: string; totalUsd: number; unpriced: string[]; unrealizedPnl: number;
   balances: Array<{ asset: string; total: number; free: number; used: number; usd: number | null }>;
   positions: Position[]; error: { code: string; message: string } | null;
-  account: { id: number; label: string; exchange: string; market: "spot" | "swap"; env: "live" | "testnet" };
+  account: { id: number; label: string; exchange: string; market: "spot" | "swap"; env: "live" | "testnet" | "paper" };
 };

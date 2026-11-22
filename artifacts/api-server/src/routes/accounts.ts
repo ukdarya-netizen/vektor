@@ -6,6 +6,7 @@ import { catalog, catalogItem } from "../exchanges/catalog";
 import { dropClient, exchangeError, makeClient, type AccountRow, type Credentials } from "../exchanges/client";
 import { readPermissions, type KeyPermissions } from "../exchanges/permissions";
 import { snapshot } from "../exchanges/snapshot";
+import { resetPaper } from "../exchanges/paper";
 import { requireUser, userOf, type AuthedRequest } from "./auth";
 import { notify } from "../telegram/notify";
 import { T } from "../telegram/texts";
@@ -35,6 +36,32 @@ const credsSchema = z.object({
   login: z.string().trim().max(256).optional(),
   twofa: z.string().trim().max(256).optional(),
   token: z.string().trim().max(4096).optional(),
+});
+
+/** Paper account: real prices of `exchange`, simulated money. No keys. */
+accountsRouter.post("/accounts/paper", async (req, res) => {
+  const user = userOf(req);
+  const b = z.object({ exchange: z.string(), market: z.enum(["spot", "swap"]), startUsdt: z.number().min(10).max(10_000_000).default(10_000), label: z.string().trim().max(60).optional() }).safeParse(req.body);
+  if (!b.success) { res.status(400).json({ error: "bad_request" }); return; }
+  const item = catalogItem(b.data.exchange);
+  if (!item || (b.data.market === "swap" ? !item.swap : !item.spot)) { res.status(400).json({ error: "market_not_supported" }); return; }
+  const label = b.data.label || `${user.lang === "en" ? "Paper" : "Демо"} ${item.name}${b.data.market === "swap" ? " Futures" : " Spot"}`;
+  const row = await one(`INSERT INTO vk_exchange_accounts (user_id, exchange, label, market, env, credentials_enc, key_hint, withdraw_check, permissions)
+    VALUES ($1, $2, $3, $4, 'paper', $5, '—', 'verified_off', '{"source":"exchange","withdraw":false,"trade":true}') RETURNING ${PUBLIC_COLS}`,
+    [user.id, item.id, label, b.data.market, encrypt("{}")]);
+  await resetPaper(row!.id, b.data.startUsdt);
+  res.json({ account: row });
+});
+
+accountsRouter.post("/accounts/:id/paper-reset", async (req, res) => {
+  const user = userOf(req);
+  const a = await one("SELECT id FROM vk_exchange_accounts WHERE id = $1 AND user_id = $2 AND env = 'paper'", [Number(req.params.id), user.id]);
+  if (!a) { res.status(404).json({ error: "not_found" }); return; }
+  const usdt = Math.min(10_000_000, Math.max(10, Number(req.body?.startUsdt ?? 10_000)));
+  // Managed positions of this account are closed in the books (the simulated money is gone).
+  await q("UPDATE vk_positions SET status = 'closed', close_reason = 'paper_reset', closed_at = now() WHERE account_id = $1 AND status <> 'closed'", [a.id]);
+  await resetPaper(a.id, usdt);
+  res.json({ ok: true });
 });
 
 const addSchema = z.object({
@@ -126,7 +153,7 @@ export async function checkAccount(a: AccountRow & { status: string; label: stri
   let perms: KeyPermissions | null = null;
   let status: "ok" | "error" = snap.error ? "error" : "ok";
   let lastError = snap.error?.message ?? null;
-  if (!snap.error) {
+  if (!snap.error && a.env !== "paper") {
     const { clientFor } = await import("../exchanges/client");
     perms = await readPermissions(a.exchange, clientFor(a));
     if (perms.withdraw === true) { status = "error"; lastError = "withdraw_enabled"; }

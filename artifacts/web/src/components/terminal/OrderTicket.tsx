@@ -24,7 +24,9 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
   const qc = useQueryClient();
   const futures = account.market === "swap";
   const [side, setSide] = useState<"long" | "short">("long");
-  const [type, setType] = useState<"market" | "limit">("market");
+  const [type, setType] = useState<"market" | "limit" | "stop">("market");
+  const [trigger, setTrigger] = useState("");
+  const [postOnly, setPostOnly] = useState(false);
   const [price, setPrice] = useState("");
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState<"usdt" | "percent">("usdt");
@@ -62,6 +64,7 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
   useEffect(() => { try { localStorage.setItem(`vk_lev_${account.id}`, String(lev)); } catch { /* ignore */ } }, [lev, account.id]);
   useEffect(() => { setPrice(""); setPf(null); setResult(null); }, [mkt?.symbol]);
   useEffect(() => { if (type === "limit" && !price && tick?.last) setPrice(String(tick.last)); }, [type, tick?.last]);
+  useEffect(() => { if (type === "stop") { setPrice(""); if (!trigger && tick?.last) setTrigger(String(tick.last)); } }, [type]);
 
   const bodyFor = (sd: "long" | "short") => mkt && Number(amount) > 0 ? {
     accountId: account.id, symbol: mkt.symbol, side: sd, type, price: type === "limit" ? Number(price) : null,
@@ -113,7 +116,7 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
 
   useImperativeHandle(ref, () => ({ submit: (sd) => submit(sd) }));
   const coin = mkt?.base ?? "";
-  const estEntry = type === "limit" ? Number(price) || null : tick?.last ?? null;
+  const estEntry = type === "limit" ? Number(price) || null : type === "stop" ? Number(price) || Number(trigger) || null : tick?.last ?? null;
   const prec = mkt?.tick ? Math.max(0, Math.min(10, Math.ceil(-Math.log10(mkt.tick) - 1e-9))) : 4;
   const planBad = futures && planOn && planProblems(plan, side, estEntry).length > 0;
   const avail = side === "short" && !futures ? `${num(bal.data?.baseFree ?? 0, t.lang)} ${coin}` : `${num(bal.data?.quoteFree ?? 0, t.lang)} USDT`;
@@ -142,15 +145,29 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
       )}
 
       <div className="flex gap-4 text-sm">
-        {(["market", "limit"] as const).map((x) => (
-          <button key={x} onClick={() => setType(x)} className={cx("border-b-2 pb-1", type === x ? "border-accent text-text" : "border-transparent text-muted")}>{t(x === "market" ? "tr.market" : "tr.limit")}</button>
+        {(["market", "limit", "stop"] as const).map((x) => (
+          <button key={x} onClick={() => setType(x)} className={cx("border-b-2 pb-1", type === x ? "border-accent text-text" : "border-transparent text-muted")}>{t(x === "market" ? "tr.market" : x === "limit" ? "tr.limit" : "tr.stop")}</button>
         ))}
       </div>
 
       {type === "limit" && (
-        <Field label={t("tr.price")} suffix="USDT">
-          <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(",", "."))} className="w-full bg-transparent outline-none num" />
-        </Field>
+        <>
+          <Field label={t("tr.price")} suffix="USDT">
+            <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(",", "."))} className="w-full bg-transparent outline-none num" />
+          </Field>
+          <label className="flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={postOnly} onChange={(e) => setPostOnly(e.target.checked)} className="accent-[var(--color-accent)]" />{t("tr.postOnly")}</label>
+        </>
+      )}
+      {type === "stop" && (
+        <>
+          <Field label={t("tr.trigger2")} suffix="USDT">
+            <input inputMode="decimal" value={trigger} onChange={(e) => setTrigger(e.target.value.replace(",", "."))} className="w-full bg-transparent outline-none num" />
+          </Field>
+          <Field label={t("tr.stopLimitPrice")} suffix="USDT">
+            <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(",", "."))} className="w-full bg-transparent outline-none num" />
+          </Field>
+          <div className="text-xs text-muted">{t("tr.stopHint")}</div>
+        </>
       )}
 
       <Field label={mode === "percent" ? "%" : futures ? t("tr.margin") : t("tr.amountUsdt")} suffix={mode === "percent" ? "%" : "USDT"}>

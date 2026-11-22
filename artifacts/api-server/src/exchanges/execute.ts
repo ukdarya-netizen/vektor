@@ -26,7 +26,9 @@ export async function marketOf(a: AccountRow, symbol: string): Promise<MarketInf
 }
 
 export type EntryInput = {
-  symbol: string; side: Side; type: "market" | "limit"; price?: number | null;
+  symbol: string; side: Side; type: "market" | "limit" | "stop_market" | "stop_limit"; price?: number | null;
+  /** Stop entries: the order wakes up when the price crosses this. */
+  triggerPrice?: number | null; postOnly?: boolean;
   amountMode: "usdt" | "percent" | "qty"; amount: number; leverage?: number | null; marginMode?: "isolated" | "cross";
   plan?: Plan | null; clientRequestId: string;
 };
@@ -38,7 +40,11 @@ export async function evaluate(a: AccountRow, b: Omit<EntryInput, "clientRequest
   if (snap.error) throw Object.assign(new Error(snap.error.message), { exchangeCode: snap.error.code });
   const quote = snap.balances.find((x) => x.asset === mk.quote);
   const base = snap.balances.find((x) => x.asset === mk.base);
-  const input: OrderInput = { market: a.market, side: b.side, type: b.type, price: b.price ?? null, amountMode: b.amountMode, amount: b.amount, leverage: b.leverage ?? 1 };
+  // Stop entries are sized at the price they will fill at: the limit price, or the trigger for stop-market.
+  const isStop = b.type === "stop_market" || b.type === "stop_limit";
+  const sizePrice = b.type === "stop_market" ? b.triggerPrice : b.price;
+  const input: OrderInput = { market: a.market, side: b.side, type: b.type === "market" ? "market" : "limit", price: sizePrice ?? null, amountMode: b.amountMode, amount: b.amount, leverage: b.leverage ?? 1, noSideWarnings: isStop };
+  if (isStop && !(Number(b.triggerPrice) > 0)) return { mk, pf: { ...preflight(input, mk, { last: null, bid: null, ask: null, freeQuote: 0 }), ok: false, errors: [{ code: "bad_trigger" }] } };
   return { mk, pf: preflight(input, mk, { last: t.last, bid: t.bid, ask: t.ask, freeQuote: quote?.free ?? 0, baseFree: base?.free ?? 0 }) };
 }
 
@@ -49,7 +55,7 @@ export async function openEntry(a: AccountRow & { status: string }, user: { id: 
   const claimed = await one<{ id: number }>(
     `INSERT INTO vk_orders (user_id, account_id, client_request_id, source, symbol, side, intent, type, qty, status)
      VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, 0, 'checking') ON CONFLICT (account_id, client_request_id) DO NOTHING RETURNING id`,
-    [user.id, a.id, b.clientRequestId, source.kind, b.symbol, b.side, b.type]);
+    [user.id, a.id, b.clientRequestId, source.kind, b.symbol, b.side, b.type]);  // type: market/limit/stop_market/stop_limit
   if (!claimed) {
     const prev = await one("SELECT * FROM vk_orders WHERE account_id = $1 AND client_request_id = $2", [a.id, b.clientRequestId]);
     return { http: 200, body: { order: prev, repeated: true } };
@@ -82,7 +88,10 @@ export async function openEntry(a: AccountRow & { status: string }, user: { id: 
       }
       params = modeParams(a.exchange, await isHedged(a.id, ex), b.side, false);
     }
-    const sent = await ex.createOrder(b.symbol, b.type, orderSide(b.side, false), pf.qty, b.type === "limit" ? pf.price : undefined, params);
+    if (b.type === "stop_market" || b.type === "stop_limit") params = { ...params, triggerPrice: Number(ex.priceToPrecision(b.symbol, b.triggerPrice!)) };
+    if (b.postOnly && b.type === "limit") params = { ...params, postOnly: true };
+    const ccxtType = b.type === "market" || b.type === "stop_market" ? "market" : "limit";
+    const sent = await ex.createOrder(b.symbol, ccxtType, orderSide(b.side, false), pf.qty, ccxtType === "limit" ? pf.price : undefined, params);
     let positionId: number | null = null;
     if (a.market === "swap" && b.plan) {
       // The engine waits for the fill, then places stop/takes/DCA from the REAL entry price.

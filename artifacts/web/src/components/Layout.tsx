@@ -25,7 +25,8 @@ function ModeBadge() {
   const accs = data?.accounts ?? [];
   if (!accs.length) return null;
   const live = accs.some((a) => a.env === "live");
-  return <Badge tone={live ? "down" : "warn"}>{live ? t("mode.live") : t("mode.testnet")}</Badge>;
+  const testnet = accs.some((a) => a.env === "testnet");
+  return <Badge tone={live ? "down" : testnet ? "warn" : "accent"}>{live ? t("mode.live") : testnet ? t("mode.testnet") : t("mode.paper")}</Badge>;
 }
 
 export function Layout({ user, children }: { user: User; children: ReactNode }) {

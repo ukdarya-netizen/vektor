@@ -1,8 +1,9 @@
 import ccxt from "ccxt";
 import { decrypt } from "../crypto";
+import { PaperExchange } from "./paper";
 
 export type Market = "spot" | "swap";
-export type Env = "live" | "testnet";
+export type Env = "live" | "testnet" | "paper";
 export type Credentials = Partial<Record<"apiKey" | "secret" | "password" | "uid" | "privateKey" | "walletAddress" | "login" | "twofa" | "token", string>>;
 
 export type AccountRow = {
@@ -36,6 +37,13 @@ const clients = new Map<number, { enc: string; client: any }>();
 
 /** One client per account (keeps rate limiter and loaded markets); rebuilt if the key changed. */
 export function clientFor(a: AccountRow): any {
+  if (a.env === "paper") {
+    const c = clients.get(a.id);
+    if (c) return c.client;
+    const client = new PaperExchange(a);
+    clients.set(a.id, { enc: a.credentials_enc, client });
+    return client;
+  }
   const c = clients.get(a.id);
   if (c && c.enc === a.credentials_enc) return c.client;
   const client = makeClient(a.exchange, a.market, a.env, JSON.parse(decrypt(a.credentials_enc)));

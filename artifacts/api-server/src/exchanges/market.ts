@@ -21,7 +21,8 @@ function build(lib: any, ex: string, m: Market, env: Env): any {
   return c;
 }
 
-export function publicClient(ex: string, m: Market, env: Env): any {
+export function publicClient(ex: string, m: Market, envIn: Env): any {
+  const env: Env = envIn === "paper" ? "live" : envIn; // paper trades on real prices
   const k = key(ex, m, env);
   if (!publicClients.has(k)) {
     const c = build(ccxt, ex, m, env);
@@ -31,7 +32,8 @@ export function publicClient(ex: string, m: Market, env: Env): any {
   return publicClients.get(k);
 }
 
-export function proClient(ex: string, m: Market, env: Env): any | null {
+export function proClient(ex: string, m: Market, envIn: Env): any | null {
+  const env: Env = envIn === "paper" ? "live" : envIn;
   const k = key(ex, m, env);
   if (!proClients.has(k)) proClients.set(k, (ccxt as any).pro?.[ex] ? build((ccxt as any).pro, ex, m, env) : null);
   return proClients.get(k);

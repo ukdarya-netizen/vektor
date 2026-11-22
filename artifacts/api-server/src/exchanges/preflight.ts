@@ -14,6 +14,8 @@ export type OrderInput = {
   amountMode: "usdt" | "percent" | "qty";
   amount: number;
   leverage?: number | null;
+  /** Stop entries: a price on "the wrong side" is the point, not a mistake. */
+  noSideWarnings?: boolean;
 };
 export type Preflight = {
   ok: boolean;
@@ -53,6 +55,8 @@ export function preflight(input: OrderInput, mk: MarketInfo, ctx: { last: number
     price = 0;
   } else if (input.type === "limit") {
     price = roundToTick(price, mk.tick);
+  }
+  if (input.type === "limit" && price > 0 && !input.noSideWarnings) {
     // A limit far on the wrong side fills at once as a taker — say so.
     const ref = ctx.last ?? price;
     if (input.side === "long" && price > ref * 1.002) warnings.push({ code: "limit_above_market", value: ((price - ref) / ref) * 100 });

@@ -19,6 +19,9 @@ export function ConnectExchange({ open, onClose, onConnected }: { open: boolean;
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [paper, setPaper] = useState(false);
+  const [paperSrc, setPaperSrc] = useState("binance");
+  const [paperStart, setPaperStart] = useState("10000");
 
   const list = useMemo(() => (data?.exchanges ?? []).filter((e) => e.tradable), [data]);
   const shown = useMemo(() => {
@@ -26,7 +29,7 @@ export function ConnectExchange({ open, onClose, onConnected }: { open: boolean;
     return s ? list.filter((e) => e.name.toLowerCase().includes(s) || e.id.includes(s)) : list;
   }, [list, search]);
 
-  const reset = () => { setEx(null); setSearch(""); setCreds({}); setLabel(""); setErr(null); setConfirmNeeded(false); setConfirmed(false); setEnv("live"); };
+  const reset = () => { setPaper(false); setEx(null); setSearch(""); setCreds({}); setLabel(""); setErr(null); setConfirmNeeded(false); setConfirmed(false); setEnv("live"); };
   const close = () => { reset(); onClose(); };
 
   const pick = (e: ExchangeInfo) => {
@@ -73,8 +76,35 @@ export function ConnectExchange({ open, onClose, onConnected }: { open: boolean;
 
   return (
     <Modal open={open} onClose={close} title={ex ? ex.name : t("ex.add")} wide>
-      {!ex ? (
+      {paper ? (
+        <form className="space-y-4" onSubmit={async (e) => {
+          e.preventDefault(); setBusy(true); setErr(null);
+          try {
+            await api("/accounts/paper", { body: { exchange: paperSrc, market, startUsdt: Number(paperStart) || 10000 } });
+            await Promise.all(["accounts", "portfolio", "positions"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+            onConnected?.(); close();
+          } catch { setErr(t("err.generic")); } finally { setBusy(false); }
+        }}>
+          <button type="button" className="text-sm text-muted hover:text-text" onClick={() => setPaper(false)}>← {t("common.back")}</button>
+          <p className="text-sm text-muted">{t("paper.text")}</p>
+          <label className="block">
+            <span className="mb-1.5 block text-sm text-muted">{t("paper.source")}</span>
+            <select className="h-11 w-full rounded-lg border border-line bg-bg px-3" value={paperSrc} onChange={(e) => setPaperSrc(e.target.value)}>
+              {list.filter((x) => x.priority).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </label>
+          <Seg<"spot" | "swap"> label={t("ex.market")} value={market} onChange={setMarket} options={[{ v: "swap", l: t("ex.swap") }, { v: "spot", l: t("ex.spot") }]} />
+          <Input label={t("paper.start")} inputMode="numeric" value={paperStart} onChange={(e) => setPaperStart(e.target.value.replace(/\D/g, ""))} />
+          {err && <Alert>{err}</Alert>}
+          <Button type="submit" size="lg" className="w-full" disabled={busy}>{busy ? <Spinner /> : t("paper.create")}</Button>
+        </form>
+      ) : !ex ? (
         <div className="space-y-3">
+          <button onClick={() => { setPaper(true); setMarket("swap"); }} className="flex w-full items-center justify-between rounded-lg border border-accent/40 bg-accent/10 px-3 py-3 text-left">
+            <span><span className="font-medium">{t("paper.title")}</span><span className="block text-xs text-muted">{t("paper.text")}</span></span>
+            <Badge tone="accent">{t("paper.badge")}</Badge>
+          </button>
+          <div className="text-center text-xs text-muted">{t("paper.or")}</div>
           <Input autoFocus placeholder={t("ex.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
           {!data ? <div className="py-8 text-center text-muted"><Spinner /></div> : (
             <div className="max-h-[55vh] overflow-y-auto">

@@ -62,14 +62,21 @@ function Exchanges() {
                 <span className="font-medium">{a.label}</span>
                 <Badge tone={a.status === "ok" ? "up" : a.status === "paused" ? "muted" : "down"}>{t(`ex.status.${a.status}` as Key)}</Badge>
                 {a.env === "testnet" && <Badge tone="warn">{t("mode.testnet")}</Badge>}
+                {a.env === "paper" && <Badge tone="accent">{t("mode.paper")}</Badge>}
               </div>
-              <div className="mt-1 text-sm text-muted">{a.market === "swap" ? t("ex.swap") : t("ex.spot")} · API {a.key_hint}</div>
-              <div className="mt-1 text-xs text-muted">{a.withdraw_check === "verified_off" ? t("ex.permVerified") : t("ex.permConfirmed")}</div>
+              <div className="mt-1 text-sm text-muted">{a.market === "swap" ? t("ex.swap") : t("ex.spot")}{a.env !== "paper" && <> · API {a.key_hint}</>}</div>
+              {a.env !== "paper" && <div className="mt-1 text-xs text-muted">{a.withdraw_check === "verified_off" ? t("ex.permVerified") : t("ex.permConfirmed")}</div>}
               {a.status === "error" && a.last_error && (
                 <div className="mt-2"><Alert>{a.last_error === "withdraw_enabled" ? t("ex.err.withdraw") : a.last_error}</Alert></div>
               )}
             </div>
             <div className="flex flex-wrap gap-1">
+              {a.env === "paper" && (
+                <Button size="sm" variant="ghost" disabled={busy === a.id} onClick={() => {
+                  const v = prompt(t("paper.start"), "10000");
+                  if (v && Number(v) >= 10 && confirm(t("paper.resetConfirm", { label: a.label, v }))) void act(a.id, () => api(`/accounts/${a.id}/paper-reset`, { body: { startUsdt: Number(v) } }));
+                }}>{t("paper.reset")}</Button>
+              )}
               <Button size="sm" variant="ghost" disabled={busy === a.id} onClick={() => act(a.id, () => api(`/accounts/${a.id}/check`, { method: "POST" }))}>
                 {busy === a.id ? <Spinner /> : t("ex.check")}
               </Button>

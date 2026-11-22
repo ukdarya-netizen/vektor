@@ -179,7 +179,7 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
         <div className="ml-auto flex items-center gap-2">
           <span className="num text-lg font-semibold">{last !== null ? last.toFixed(prec) : "—"}</span>
           {feed.stale ? <Badge tone="down">{t("tr.stale")}</Badge> : feed.mode && <span className="text-xs text-muted">{feed.mode === "ws" ? t("tr.dataWs") : t("tr.dataPoll")}</span>}
-          {account.env === "testnet" ? <Badge tone="warn">{t("mode.testnet")}</Badge> : <Badge tone="down">{t("mode.live")}</Badge>}
+          {account.env === "paper" ? <Badge tone="accent">{t("mode.paper")}</Badge> : account.env === "testnet" ? <Badge tone="warn">{t("mode.testnet")}</Badge> : <Badge tone="down">{t("mode.live")}</Badge>}
         </div>
       </div>
 

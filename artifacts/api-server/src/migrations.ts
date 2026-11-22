@@ -244,4 +244,17 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       ALTER TABLE vk_positions ADD COLUMN IF NOT EXISTS dca jsonb NOT NULL DEFAULT '[]'::jsonb;
     `,
   },
+  {
+    id: 8,
+    name: "paper accounts",
+    sql: `
+      ALTER TABLE vk_exchange_accounts DROP CONSTRAINT IF EXISTS vk_exchange_accounts_env_check;
+      ALTER TABLE vk_exchange_accounts ADD CONSTRAINT vk_exchange_accounts_env_check CHECK (env IN ('live', 'testnet', 'paper'));
+      CREATE TABLE IF NOT EXISTS vk_paper (
+        account_id bigint PRIMARY KEY REFERENCES vk_exchange_accounts(id) ON DELETE CASCADE,
+        state jsonb NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];

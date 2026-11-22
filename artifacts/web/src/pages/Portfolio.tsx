@@ -43,6 +43,7 @@ export function PortfolioPage() {
             <div className="flex items-center gap-2">
               <span className="font-medium">{s.account.label}</span>
               {s.account.env === "testnet" && <Badge tone="warn">{t("mode.testnet")}</Badge>}
+              {s.account.env === "paper" && <Badge tone="accent">{t("mode.paper")}</Badge>}
             </div>
             <span className="num font-semibold">{usd(s.totalUsd, t.lang)}</span>
           </div>
