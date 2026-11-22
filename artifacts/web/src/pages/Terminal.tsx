@@ -4,8 +4,10 @@ import { api, type Account, type Position } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { num, pct, signedUsd, tone } from "@/lib/format";
 import { Alert, Badge, Button, Card, Empty, Spinner, cx } from "@/components/ui";
-import { Chart, type Candle, type ChartLine } from "@/components/terminal/Chart";
-import { OrderTicket, type Mkt } from "@/components/terminal/OrderTicket";
+import { Chart, type Candle, type ChartLine, type Tool } from "@/components/terminal/Chart";
+import { DrawToolbar, IndicatorMenu, useDrawings } from "@/components/terminal/ChartTools";
+import type { IndicatorConf } from "@/components/terminal/indicators";
+import { OrderTicket, type Mkt, type TicketHandle } from "@/components/terminal/OrderTicket";
 import { useFeed, type Book } from "@/components/terminal/useFeed";
 import { ConnectExchange } from "@/components/ConnectExchange";
 import { DEFAULT_PLAN, PlanEditor, planProblems, type Plan } from "@/components/terminal/PlanEditor";
@@ -91,8 +93,8 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
       if (p.liquidationPrice) out.push({ price: p.liquidationPrice, title: `${t("tr.liqLine")} ${side}`, color: "#f5b84a", dashed: true });
     }
     for (const m of live.filter((m) => m.symbol === symbol)) {
-      if (m.stop_price) out.push({ price: Number(m.stop_price), title: `${t("mg.slLine")}${m.stop_kind === "breakeven" ? " BE" : m.stop_kind === "trailing" ? " trail" : ""}`, color: "#f0525f", dashed: true });
-      for (const tk of m.takes.filter((x) => x.state === "open")) out.push({ price: tk.price, title: t("mg.tpLine", { n: tk.n }), color: "#22c58b", dashed: true });
+      if (m.stop_price) out.push({ price: Number(m.stop_price), title: `${t("mg.slLine")}${m.stop_kind === "breakeven" ? " BE" : m.stop_kind === "trailing" ? " trail" : ""}`, color: "#f0525f", dashed: true, dragId: m.status === "open" ? `sl:${m.id}` : undefined });
+      for (const tk of m.takes.filter((x) => x.state === "open")) out.push({ price: tk.price, title: t("mg.tpLine", { n: tk.n }), color: "#22c58b", dashed: true, dragId: m.status === "open" ? `tp:${m.id}:${tk.n}` : undefined });
     }
     for (const o of orders.data?.orders ?? []) {
       const px = o.price ?? o.triggerPrice;
@@ -100,6 +102,61 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
     }
     return out;
   }, [JSON.stringify(mine), JSON.stringify(orders.data), JSON.stringify(live), symbol, t.lang]);
+
+  const qc = useQueryClient();
+  const [tool, setTool] = useState<Tool>("cursor");
+  const [magnet, setMagnet] = useState(() => store.get("vk_magnet") === "1");
+  const [locked, setLocked] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [hotkeys, setHotkeys] = useState(() => store.get("vk_hotkeys") === "1");
+  const [indicators, setIndicators] = useState<IndicatorConf[]>(() => { try { return JSON.parse(store.get("vk_ind") ?? "[]"); } catch { return []; } });
+  useEffect(() => { store.set("vk_magnet", magnet ? "1" : "0"); }, [magnet]);
+  useEffect(() => { store.set("vk_hotkeys", hotkeys ? "1" : "0"); }, [hotkeys]);
+  useEffect(() => { store.set("vk_ind", JSON.stringify(indicators)); }, [indicators]);
+  const draw = useDrawings(`vk_draw_${account.exchange}_${symbol}`);
+  const ticket = useRef<TicketHandle | null>(null);
+  const [dragErr, setDragErr] = useState<string | null>(null);
+
+  /** A stop/take line was dragged: confirm, then change the plan to that exact price. */
+  const onLineDrag = async (dragId: string, price: number) => {
+    const [kind, idStr, nStr] = dragId.split(":");
+    const m = live.find((x) => x.id === Number(idStr));
+    if (!m || !m.entry_price) return;
+    const px = Number(price.toFixed(prec));
+    if (!confirm(kind === "sl" ? t("drag.stop", { p: px }) : t("drag.take", { n: nStr, p: px }))) return;
+    const entry = Number(m.entry_price);
+    const plan = JSON.parse(JSON.stringify(m.plan)) as Plan;
+    if (kind === "sl") plan.stop = { mode: "price", value: px };
+    else {
+      // TP numbers follow price order (nearest first) — find which plan entry is TPn.
+      const dir = m.side === "long" ? 1 : -1;
+      const priced = plan.takes.map((x, i) => ({ i, price: x.mode === "price" ? x.value : entry * (1 + (dir * x.value) / 100) }))
+        .sort((a, b) => dir * (a.price - b.price));
+      const hit = priced[Number(nStr) - 1];
+      if (!hit) return;
+      plan.takes[hit.i] = { ...plan.takes[hit.i], mode: "price", value: px };
+    }
+    setDragErr(null);
+    try { await api(`/managed/${m.id}`, { method: "PATCH", body: { plan } }); void qc.invalidateQueries({ queryKey: ["managed"] }); }
+    catch (e: any) { const k = `plan.${e?.code}` as Key; setDragErr(t("drag.err", { e: t(k) !== k ? t(k) : e?.code ?? "" })); }
+  };
+
+  // Hotkeys (off by default): Shift+B long/buy, Shift+S short/sell, Shift+X close this coin.
+  useEffect(() => {
+    if (!hotkeys) return;
+    const h = (e: KeyboardEvent) => {
+      if (!e.shiftKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      const k = e.key.toLowerCase();
+      if (k === "b") { e.preventDefault(); void ticket.current?.submit("long"); }
+      else if (k === "s") { e.preventDefault(); void ticket.current?.submit("short"); }
+      else if (k === "x" && futures) {
+        e.preventDefault();
+        for (const p of mine.filter((p) => p.symbol === symbol)) void api("/positions/close", { body: { accountId: account.id, symbol, side: p.side, percent: 100 } }).then(() => qc.invalidateQueries({ queryKey: ["positions"] }));
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [hotkeys, symbol, JSON.stringify(mine)]);
 
   const last = feed.tick?.last ?? hist.data?.candles.at(-1)?.[4] ?? null;
   const prec = decimals(mkt?.tick ?? null);
@@ -117,6 +174,8 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
             <button key={x} onClick={() => setTf(x)} className={cx("rounded-md px-2 py-1 text-xs", tf === x ? "bg-panel-2 text-text" : "text-muted hover:text-text")}>{x}</button>
           ))}
         </div>
+        <IndicatorMenu value={indicators} onChange={setIndicators} />
+        {hotkeys && <Badge tone="warn">{t("hk.on")}</Badge>}
         <div className="ml-auto flex items-center gap-2">
           <span className="num text-lg font-semibold">{last !== null ? last.toFixed(prec) : "—"}</span>
           {feed.stale ? <Badge tone="down">{t("tr.stale")}</Badge> : feed.mode && <span className="text-xs text-muted">{feed.mode === "ws" ? t("tr.dataWs") : t("tr.dataPoll")}</span>}
@@ -125,13 +184,20 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_190px_330px]">
-        <div className="relative h-[52vh] min-h-[320px] border-b border-line lg:h-auto lg:border-b-0 lg:border-r">
-          {hist.isLoading || markets.isLoading ? <div className="flex h-full items-center justify-center text-muted"><Spinner /></div>
-            : hist.error ? <div className="p-4"><Alert>{String((hist.error as any)?.body?.exchangeError?.message ?? hist.error)}</Alert></div>
-            : <Chart candles={hist.data?.candles ?? null} live={feed.live} lines={lines} precision={prec} />}
+        <div className="flex min-h-0 flex-col border-b border-line lg:flex-row lg:border-b-0 lg:border-r">
+          <DrawToolbar tool={tool} setTool={setTool} magnet={magnet} setMagnet={setMagnet} locked={locked} setLocked={setLocked} hidden={hidden} setHidden={setHidden}
+            canUndo={draw.canUndo} onUndo={draw.undo} onClear={() => confirm(t("draw.clearConfirm")) && draw.setDrawings([])} hotkeys={hotkeys} setHotkeys={setHotkeys} />
+          <div className="relative h-[52vh] min-h-[320px] flex-1 lg:h-auto">
+            {dragErr && <div className="absolute left-2 top-2 z-20"><Alert>{dragErr}</Alert></div>}
+            {hist.isLoading || markets.isLoading ? <div className="flex h-full items-center justify-center text-muted"><Spinner /></div>
+              : hist.error ? <div className="p-4"><Alert>{String((hist.error as any)?.body?.exchangeError?.message ?? hist.error)}</Alert></div>
+              : <Chart candles={hist.data?.candles ?? null} live={feed.live} lines={lines} precision={prec} indicators={indicators}
+                  drawings={draw.drawings} onDrawings={draw.setDrawings} tool={tool} onToolDone={() => setTool("cursor")}
+                  magnet={magnet} locked={locked} hidden={hidden} onLineDrag={onLineDrag} askText={() => prompt(t("draw.textPrompt"))} />}
+          </div>
         </div>
         <div className="hidden border-r border-line lg:block"><OrderBook book={feed.book} prec={prec} /></div>
-        <div className="border-b border-line p-3 lg:border-b-0"><OrderTicket account={account} mkt={mkt} tick={feed.tick} /></div>
+        <div className="border-b border-line p-3 lg:border-b-0"><OrderTicket ref={ticket} account={account} mkt={mkt} tick={feed.tick} /></div>
       </div>
 
       {/* Bottom: positions and orders of this account */}

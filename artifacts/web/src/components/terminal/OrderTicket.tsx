@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useImperativeHandle, useMemo, useState, type Ref } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Account } from "@/lib/api";
 import { useT, type Key } from "@/lib/i18n";
@@ -17,7 +17,9 @@ const LEVS = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125];
  * Simple by default: side, market/limit, amount with % buttons, leverage — and a live
  * preview of exactly what will be sent, with every problem in words before the button.
  */
-export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt | null; tick: Tick | null }) {
+export type TicketHandle = { submit: (side: "long" | "short") => Promise<void> };
+
+export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt: Mkt | null; tick: Tick | null; ref?: Ref<TicketHandle> }) {
   const t = useT();
   const qc = useQueryClient();
   const futures = account.market === "swap";
@@ -61,10 +63,11 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
   useEffect(() => { setPrice(""); setPf(null); setResult(null); }, [mkt?.symbol]);
   useEffect(() => { if (type === "limit" && !price && tick?.last) setPrice(String(tick.last)); }, [type, tick?.last]);
 
-  const body = mkt && Number(amount) > 0 ? {
-    accountId: account.id, symbol: mkt.symbol, side, type, price: type === "limit" ? Number(price) : null,
+  const bodyFor = (sd: "long" | "short") => mkt && Number(amount) > 0 ? {
+    accountId: account.id, symbol: mkt.symbol, side: sd, type, price: type === "limit" ? Number(price) : null,
     amountMode: mode, amount: Number(amount), leverage: futures ? lev : 1, marginMode: futures ? marginMode : undefined,
   } : null;
+  const body = bodyFor(side);
 
   // Debounced preview.
   useEffect(() => {
@@ -81,8 +84,10 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
     return txt === k ? e.code : txt;
   };
 
-  const submit = async () => {
+  const submit = async (sd: "long" | "short" = side) => {
+    const body = bodyFor(sd);
     if (!body) return;
+    if (sd !== side) setSide(sd);
     setBusy(true); setResult(null);
     try {
       const r = await api<{ order: { status: string } }>("/orders", { body: { ...body, clientRequestId: requestId, plan: futures && planOn ? plan : null } });
@@ -106,6 +111,7 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
     } finally { setBusy(false); }
   };
 
+  useImperativeHandle(ref, () => ({ submit: (sd) => submit(sd) }));
   const coin = mkt?.base ?? "";
   const estEntry = type === "limit" ? Number(price) || null : tick?.last ?? null;
   const prec = mkt?.tick ? Math.max(0, Math.min(10, Math.ceil(-Math.log10(mkt.tick) - 1e-9))) : 4;
@@ -202,7 +208,7 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
         </div>
       )}
 
-      <Button size="lg" onClick={submit} disabled={busy || !body || (pf ? !pf.ok : true) || planBad}
+      <Button size="lg" onClick={() => void submit()} disabled={busy || !body || (pf ? !pf.ok : true) || planBad}
         className={cx("w-full", long ? "!bg-up hover:!bg-up/90" : "!bg-down hover:!bg-down/90")}>
         {busy ? <><Spinner /> {t("tr.sending")}</> : futures ? t(long ? "tr.openLong" : "tr.openShort") : t(long ? "tr.buyBtn" : "tr.sellBtn", { coin })}
       </Button>

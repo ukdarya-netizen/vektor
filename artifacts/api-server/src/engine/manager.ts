@@ -166,10 +166,17 @@ export function createManager(deps: Deps) {
     await closeMarket(c, last !== null && stopCrossed(p.side, price, last) ? "stop_passed" : "protection_failed");
   }
 
-  async function placeTakes(c: Ctx, entry: number, qty: number) {
+  /**
+   * Takes for `qty`. Levels already filled (by number) are skipped and the remaining shares are
+   * scaled up to cover the remaining size — a filled TP1 is never placed again.
+   */
+  async function placeTakes(c: Ctx, entry: number, qty: number, skip: Set<number> = new Set()) {
     const { p, ex, a } = c;
-    const levels = takeLevels(p.plan, p.side, entry);
-    if (!levels.length) { await update(p, { takes: [] }); return; }
+    const all = takeLevels(p.plan, p.side, entry);
+    const doneShare = all.filter((l) => skip.has(l.n)).reduce((s, l) => s + l.closePct, 0);
+    const scale = doneShare > 0 && doneShare < 100 ? 100 / (100 - doneShare) : 1;
+    const levels = all.filter((l) => !skip.has(l.n)).map((l) => ({ ...l, closePct: Math.min(100, l.closePct * scale) }));
+    if (!levels.length) { await update(p, { takes: p.takes.filter((t) => skip.has(t.n)) }); return; }
     const qtys = takeQuantities(levels, qty, null, (v) => amt(ex, p.symbol, Math.max(0, v)));
     const takes: PosRow["takes"] = [];
     for (let i = 0; i < levels.length; i++) {
@@ -283,9 +290,13 @@ export function createManager(deps: Deps) {
         await update(p, { dca });
         await say(p.user_id, "partial", T.dcaFilled(c.h, hit, p.entry_price!, size * Number(market(ex, p.symbol)?.contractSize ?? 1)));
       }
+      const filledTakes = p.takes.filter((t) => t.state === "filled");
       await cancelTakes(c);
       if (p.stop_price !== null) await placeStop(c, p.stop_price, p.stop_kind ?? "initial", "size_changed");
-      if (!isClosed(p)) await placeTakes(c, p.entry_price!, size);
+      if (!isClosed(p)) {
+        await placeTakes(c, p.entry_price!, size, new Set(filledTakes.map((t) => t.n)));
+        await update(p, { takes: [...filledTakes, ...p.takes] });
+      }
     }
     if (isClosed(p)) return;
 
@@ -355,7 +366,7 @@ export function createManager(deps: Deps) {
     if (isClosed(p)) return;
     // Takes already filled stay filled; the new plan applies to the remaining size.
     const filled = p.takes.filter((t) => t.state === "filled");
-    await placeTakes(c, p.entry_price!, p.qty!);
+    await placeTakes(c, p.entry_price!, p.qty!, new Set(filled.map((t) => t.n)));
     await update(p, { takes: [...filled, ...p.takes] });
     await event(p, "plan_edited", { stop: p.stop_price, takes: p.takes.length });
   }

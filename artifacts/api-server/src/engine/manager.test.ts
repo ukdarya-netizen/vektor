@@ -136,6 +136,19 @@ test("stop cannot be placed → position closed at market, critical message", as
   await s.cleanup();
 });
 
+test("plan edit after TP1: TP1 is not placed again, TP2 covers the rest", async () => {
+  const ex = new FakeEx();
+  const s = await setup(ex, { stop: { mode: "pct", value: 2 }, takes: [{ mode: "pct", value: 2, closePct: 50 }, { mode: "pct", value: 6, closePct: 50 }] });
+  await s.m.cycleAccount(s.a);
+  ex.move(102);
+  await s.m.cycleAccount(s.a);
+  const r = await s.row();
+  await q("UPDATE vk_positions SET plan = $2, resync = true WHERE id = $1", [r.id, JSON.stringify(planSchema.parse({ stop: { mode: "pct", value: 2 }, takes: [{ mode: "pct", value: 2, closePct: 50 }, { mode: "price", value: 105, closePct: 50 }] }))]);
+  await s.m.cycleAccount(s.a);
+  assert.deepEqual(ex.openTakes().map((o) => [o.price, o.amount]), [[105, 0.5]]);
+  await s.cleanup();
+});
+
 test("stop cancelled by hand on the exchange → put back", async () => {
   const ex = new FakeEx();
   const s = await setup(ex, { stop: { mode: "pct", value: 2 } });
