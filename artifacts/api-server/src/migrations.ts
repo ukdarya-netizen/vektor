@@ -131,4 +131,65 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS vk_orders_user ON vk_orders (user_id, created_at DESC);
     `,
   },
+  {
+    id: 5,
+    name: "managed positions and their journal",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vk_positions (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        account_id bigint NOT NULL REFERENCES vk_exchange_accounts(id) ON DELETE CASCADE,
+        symbol text NOT NULL,
+        side text NOT NULL CHECK (side IN ('long', 'short')),
+        source text NOT NULL,
+        source_label text NOT NULL,
+        status text NOT NULL CHECK (status IN ('pending', 'open', 'closed')),
+        plan jsonb NOT NULL,
+        entry_order_id text,
+        entry_price numeric,
+        initial_qty numeric,
+        qty numeric,
+        leverage int,
+        stop_price numeric,
+        stop_kind text,
+        stop_order_id text,
+        stop_where text,
+        takes jsonb NOT NULL DEFAULT '[]'::jsonb,
+        best_price numeric,
+        be_done boolean NOT NULL DEFAULT false,
+        trail_notified_at timestamptz,
+        pending_close_reason text,
+        realized_pnl numeric NOT NULL DEFAULT 0,
+        opened_at timestamptz,
+        closed_at timestamptz,
+        close_reason text,
+        exit_price numeric,
+        pnl numeric,
+        pnl_pct numeric,
+        fees numeric,
+        last_error text,
+        last_sync_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      -- One managed position per account+symbol+side at a time.
+      CREATE UNIQUE INDEX IF NOT EXISTS vk_positions_live ON vk_positions (account_id, symbol, side) WHERE status <> 'closed';
+      CREATE INDEX IF NOT EXISTS vk_positions_user ON vk_positions (user_id, created_at DESC);
+      CREATE TABLE IF NOT EXISTS vk_position_events (
+        id bigserial PRIMARY KEY,
+        position_id bigint NOT NULL REFERENCES vk_positions(id) ON DELETE CASCADE,
+        user_id bigint NOT NULL,
+        kind text NOT NULL,
+        detail jsonb NOT NULL DEFAULT '{}'::jsonb,
+        at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS vk_position_events_pos ON vk_position_events (position_id, id);
+      CREATE INDEX IF NOT EXISTS vk_position_events_user ON vk_position_events (user_id, id DESC);
+    `,
+  },
+  {
+    id: 6,
+    name: "plan edits are applied by the engine",
+    sql: `ALTER TABLE vk_positions ADD COLUMN IF NOT EXISTS resync boolean NOT NULL DEFAULT false;`,
+  },
 ];

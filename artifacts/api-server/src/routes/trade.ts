@@ -8,6 +8,7 @@ import { preflight, type OrderInput } from "../exchanges/preflight";
 import { isHedged, modeParams, orderSide } from "../exchanges/positionMode";
 import { snapshot, STABLES } from "../exchanges/snapshot";
 import { requireUser, userOf } from "./auth";
+import { planErrors, planSchema } from "../engine/plan";
 
 export const tradeRouter = Router();
 tradeRouter.use(requireUser);
@@ -84,6 +85,8 @@ const orderSchema = z.object({
   leverage: z.number().int().min(1).max(250).nullable().optional(),
   marginMode: z.enum(["isolated", "cross"]).optional(),
   clientRequestId: z.string().min(8).max(64),
+  /** Futures only: take-profits, stop, break-even, trailing — the engine manages the position after the fill. */
+  plan: planSchema.nullable().optional(),
 });
 
 async function evaluate(a: AccountRow, b: z.infer<typeof orderSchema>) {
@@ -142,6 +145,10 @@ tradeRouter.post("/orders", async (req, res) => {
     const { mk, pf } = await evaluate(a, b.data);
     if (!mk || !pf) { res.status(400).json({ error: "no_symbol", order: await finish("rejected", { errorCode: "no_symbol" }) }); return; }
     if (!pf.ok) { res.status(400).json({ error: "preflight_failed", preflight: pf, order: await finish("rejected", { errorCode: pf.errors[0].code, preflight: pf }) }); return; }
+    if (b.data.plan && a.market === "swap") {
+      const errs = planErrors(b.data.plan, b.data.side, pf.price);
+      if (errs.length) { res.status(400).json({ error: "plan_invalid", reason: errs[0], order: await finish("rejected", { errorCode: errs[0], preflight: pf }) }); return; }
+    }
 
     const ex = clientFor(a);
     let params: Record<string, unknown> = {};
@@ -156,6 +163,13 @@ tradeRouter.post("/orders", async (req, res) => {
       params = modeParams(a.exchange, await isHedged(a.id, ex), b.data.side, false);
     }
     const sent = await ex.createOrder(b.data.symbol, b.data.type, orderSide(b.data.side, false), pf.qty, b.data.type === "limit" ? pf.price : undefined, params);
+    if (a.market === "swap" && b.data.plan) {
+      // The engine waits for the fill, then places the stop and takes from the REAL entry price.
+      // If this symbol+side is already managed, the add is picked up as a size increase.
+      await q(`INSERT INTO vk_positions (user_id, account_id, symbol, side, source, source_label, status, plan, entry_order_id, leverage)
+               VALUES ($1, $2, $3, $4, 'terminal', $5, 'pending', $6, $7, $8) ON CONFLICT DO NOTHING`,
+        [user.id, a.id, b.data.symbol, b.data.side, user.lang === "en" ? "Terminal" : "Терминал", JSON.stringify(b.data.plan), String(sent.id), pf.leverage]);
+    }
     res.json({ order: await finish(sent.status === "closed" ? "filled" : "open", { qty: pf.qty, price: sent.average ?? sent.price ?? pf.price, leverage: pf.leverage, exchangeOrderId: sent.id, preflight: pf }) });
   } catch (e) {
     const err = exchangeError(e);
@@ -204,6 +218,9 @@ tradeRouter.post("/positions/close", async (req, res) => {
     const ex = clientFor(a);
     const contracts = pos.size / (mk?.contractSize || 1);
     const qty = b.data.percent >= 100 ? contracts : Number(ex.amountToPrecision(b.data.symbol, (contracts * b.data.percent) / 100));
+    // Tell the engine this close is the user's own, so the message names it right.
+    await q(`UPDATE vk_positions SET pending_close_reason = $4 WHERE account_id = $1 AND symbol = $2 AND side = $3 AND status = 'open'`,
+      [a.id, b.data.symbol, b.data.side, b.data.percent >= 100 ? "terminal" : "terminal_partial"]);
     const sent = await ex.createOrder(b.data.symbol, "market", orderSide(b.data.side, true), qty, undefined, modeParams(a.exchange, await isHedged(a.id, ex), b.data.side, true));
     await q(`INSERT INTO vk_orders (user_id, account_id, client_request_id, symbol, side, intent, type, qty, status, exchange_order_id)
              VALUES ($1, $2, $3, $4, $5, 'close', 'market', $6, 'sent', $7)`, [a.user_id, a.id, `close-${Date.now()}`, b.data.symbol, b.data.side, qty, sent.id]);

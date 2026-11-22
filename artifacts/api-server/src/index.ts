@@ -5,6 +5,9 @@ import { authRouter } from "./routes/auth";
 import { accountsRouter, checkAccount } from "./routes/accounts";
 import { notificationsRouter } from "./routes/notifications";
 import { tradeRouter } from "./routes/trade";
+import { managedRouter } from "./routes/managed";
+import { startEngine } from "./engine/manager";
+import { clientFor } from "./exchanges/client";
 import { pump } from "./telegram/outbox";
 import { startPolling } from "./telegram/bot";
 
@@ -23,6 +26,7 @@ app.use(cookieParser());
 app.get("/api/healthz", (_req, res) => { res.json({ ok: true }); });
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/managed", managedRouter);
 app.use("/api", accountsRouter);
 app.use("/api", tradeRouter);
 
@@ -43,3 +47,9 @@ app.listen(port, "0.0.0.0", () => console.log(`[api] listening on ${port}`));
 void pump().catch((e) => console.error("[tg] pump", e));
 void startPolling();
 if (process.env.ACCOUNT_HEALTH_CHECKS !== "0") setInterval(() => void healthLoop().catch((e) => console.error("[health]", e)), 60_000).unref();
+// Position manager: on in production; in development only with ENGINE_ENABLED=1 (a dev copy must not
+// manage real positions next to the published one — the DB lock also prevents double handling).
+if (process.env.NODE_ENV === "production" ? process.env.ENGINE_ENABLED !== "0" : process.env.ENGINE_ENABLED === "1") {
+  startEngine({ client: clientFor });
+  console.log("[engine] position manager started");
+}

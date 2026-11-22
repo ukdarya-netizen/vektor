@@ -71,13 +71,15 @@ export function closeLine(key: string, ctx: { source?: string; takeN?: number | 
   }
 }
 
-export function resultLine(resultPct: number | null, pnl: number | null, asset: string): Msg {
+/** Price move in %, money NET of fees; fees shown when known. */
+export function resultLine(resultPct: number | null, pnl: number | null, asset: string, fees: number | null = null): Msg {
   if (resultPct === null && pnl === null) return both("Результат: биржа не вернула цену выхода", "Result: the exchange did not return the exit price");
-  const parts = [resultPct === null ? "" : `${pct(resultPct)}`, pnl === null ? "" : money(pnl, asset)].filter(Boolean).join(" · ");
   const v = resultPct === null ? null : resultPct >= FLAT_PCT ? 1 : resultPct <= -FLAT_PCT ? -1 : 0;
+  const ru = [resultPct === null ? "" : `${pct(resultPct)} цены`, pnl === null ? "" : `${money(pnl, asset)}${fees ? ` чистыми (комиссии ${Math.abs(fees).toFixed(2)})` : ""}`].filter(Boolean).join(" · ");
+  const en = [resultPct === null ? "" : `${pct(resultPct)} price`, pnl === null ? "" : `${money(pnl, asset)}${fees ? ` net (fees ${Math.abs(fees).toFixed(2)})` : ""}`].filter(Boolean).join(" · ");
   return both(
-    `Итог${v === 1 ? " в плюсе" : v === -1 ? " в минусе" : v === 0 ? " около нуля" : ""}: ${parts}`,
-    `Result${v === 1 ? " in profit" : v === -1 ? " in loss" : v === 0 ? " near zero" : ""}: ${parts}`,
+    `Итог${v === 1 ? " в плюсе" : v === -1 ? " в минусе" : v === 0 ? " около нуля" : ""}: ${ru}`,
+    `Result${v === 1 ? " in profit" : v === -1 ? " in loss" : v === 0 ? " near zero" : ""}: ${en}`,
   );
 }
 

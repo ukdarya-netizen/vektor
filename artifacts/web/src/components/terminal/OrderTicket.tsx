@@ -5,6 +5,7 @@ import { useT, type Key } from "@/lib/i18n";
 import { num, usd } from "@/lib/format";
 import { Alert, Button, Spinner, cx } from "@/components/ui";
 import type { Tick } from "./useFeed";
+import { DEFAULT_PLAN, PlanEditor, planProblems, type Plan } from "./PlanEditor";
 
 export type Mkt = { symbol: string; base: string; quote: string; tick: number | null; step: number | null; minAmount: number | null; minCost: number | null; contractSize: number; maxLeverage: number | null };
 type Pf = { ok: boolean; errors: Array<{ code: string; need?: number; have?: number }>; warnings: Array<{ code: string; value?: number }>; price: number; qty: number; notional: number; margin: number; fee: number; leverage: number };
@@ -31,6 +32,9 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ tone: "up" | "down" | "warn"; text: string } | null>(null);
   const [requestId, setRequestId] = useState(uid);
+  const [planOn, setPlanOn] = useState(() => localStorage.getItem(`vk_planon_${account.id}`) !== "0");
+  const [plan, setPlan] = useState<Plan>(() => { try { return JSON.parse(localStorage.getItem(`vk_plan_${account.id}`) ?? "") as Plan; } catch { return DEFAULT_PLAN; } });
+  useEffect(() => { try { localStorage.setItem(`vk_plan_${account.id}`, JSON.stringify(plan)); localStorage.setItem(`vk_planon_${account.id}`, planOn ? "1" : "0"); } catch { /* ignore */ } }, [plan, planOn, account.id]);
 
   const bal = useQuery({
     queryKey: ["balance", account.id, mkt?.base],
@@ -68,7 +72,7 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
     if (!body) return;
     setBusy(true); setResult(null);
     try {
-      const r = await api<{ order: { status: string } }>("/orders", { body: { ...body, clientRequestId: requestId } });
+      const r = await api<{ order: { status: string } }>("/orders", { body: { ...body, clientRequestId: requestId, plan: futures && planOn ? plan : null } });
       setResult({ tone: "up", text: r.order.status === "filled" ? t("tr.filled") : t("tr.sent") });
       setAmount("");
       setRequestId(uid()); // new order = new id; a retry of the same click keeps the old one
@@ -81,6 +85,7 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
         else if (e.code === "preflight_failed") setPf(e.body.preflight);
         else if (e.code === "leverage_failed") setResult({ tone: "down", text: t("pf.leverage_failed", { msg: e.body?.exchangeError?.message ?? "" }) });
         else if (e.code === "account_paused") setResult({ tone: "down", text: t("pf.account_paused") });
+        else if (e.code === "plan_invalid") setResult({ tone: "down", text: t(`plan.${e.body?.reason}` as Key) });
         else setResult({ tone: "down", text: e.body?.exchangeError?.message ?? t("err.generic") });
         if (e.body?.order?.status !== "unknown") setRequestId(uid());
       } else setResult({ tone: "down", text: t("err.generic") });
@@ -88,6 +93,9 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
   };
 
   const coin = mkt?.base ?? "";
+  const estEntry = type === "limit" ? Number(price) || null : tick?.last ?? null;
+  const prec = mkt?.tick ? Math.max(0, Math.min(10, Math.ceil(-Math.log10(mkt.tick) - 1e-9))) : 4;
+  const planBad = futures && planOn && planProblems(plan, side, estEntry).length > 0;
   const avail = side === "short" && !futures ? `${num(bal.data?.baseFree ?? 0, t.lang)} ${coin}` : `${num(bal.data?.quoteFree ?? 0, t.lang)} USDT`;
   const long = side === "long";
 
@@ -146,6 +154,18 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
         </>
       )}
 
+      {futures && (
+        <div className="rounded-lg border border-line p-3">
+          <div className="flex items-center justify-between text-sm font-medium">
+            <span>{t("plan.title")}</span>
+            <button onClick={() => setPlanOn((v) => !v)} className={cx("h-6 w-11 rounded-full transition relative", planOn ? "bg-accent" : "bg-line")} role="switch" aria-checked={planOn}>
+              <span className={cx("absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all", planOn ? "left-[22px]" : "left-0.5")} />
+            </button>
+          </div>
+          {planOn && <div className="mt-3"><PlanEditor plan={plan} onChange={setPlan} side={side} entry={estEntry} prec={prec} /></div>}
+        </div>
+      )}
+
       {pf && (
         <div className="space-y-1 rounded-lg border border-line bg-bg p-3 text-xs">
           <Row k={t("tr.qty")} v={`${num(pf.qty * (mkt?.contractSize ?? 1), t.lang)} ${coin}`} />
@@ -157,7 +177,7 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
         </div>
       )}
 
-      <Button size="lg" onClick={submit} disabled={busy || !body || (pf ? !pf.ok : true)}
+      <Button size="lg" onClick={submit} disabled={busy || !body || (pf ? !pf.ok : true) || planBad}
         className={cx("w-full", long ? "!bg-up hover:!bg-up/90" : "!bg-down hover:!bg-down/90")}>
         {busy ? <><Spinner /> {t("tr.sending")}</> : futures ? t(long ? "tr.openLong" : "tr.openShort") : t(long ? "tr.buyBtn" : "tr.sellBtn", { coin })}
       </Button>

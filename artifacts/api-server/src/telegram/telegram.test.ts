@@ -20,7 +20,7 @@ test("close naming: trailed stop in profit is never a stop-loss", () => {
   assert.equal(stopCloseKey("breakeven", 0.1), "stop_breakeven");
   assert.equal(stopCloseKey("breakeven", 0.6), "stop_breakeven_plus");
   assert.match(closeLine("signal_cancel", { source: "TradingView" }).ru, /отменил сигнал/);
-  assert.match(resultLine(-1.5, -3.2, "USDT").ru, /^Итог в минусе: −1\.50% · −3\.20 USDT$/);
+  assert.match(resultLine(-1.5, -3.2, "USDT", 0.1).ru, /^Итог в минусе: −1\.50% цены · −3\.20 USDT чистыми \(комиссии 0\.10\)$/);
 });
 
 test("quiet hours across midnight", () => {

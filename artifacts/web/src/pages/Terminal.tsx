@@ -8,6 +8,15 @@ import { Chart, type Candle, type ChartLine } from "@/components/terminal/Chart"
 import { OrderTicket, type Mkt } from "@/components/terminal/OrderTicket";
 import { useFeed, type Book } from "@/components/terminal/useFeed";
 import { ConnectExchange } from "@/components/ConnectExchange";
+import { DEFAULT_PLAN, PlanEditor, planProblems, type Plan } from "@/components/terminal/PlanEditor";
+import { Modal } from "@/components/ui";
+import type { Key } from "@/lib/i18n";
+
+export type Managed = {
+  id: number; account_id: number; symbol: string; side: "long" | "short"; status: "pending" | "open" | "closed"; plan: Plan;
+  entry_price: string | null; qty: string | null; stop_price: string | null; stop_kind: string | null; stop_where: string | null;
+  takes: Array<{ n: number; price: number; qty: number; state: string }>; be_done: boolean; last_error: string | null; source_label: string;
+};
 
 const TFS = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"];
 const store = {
@@ -71,6 +80,9 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
     queryFn: () => api<{ orders: OpenOrder[] }>(`/orders/open?accountId=${account.id}&symbol=${encodeURIComponent(symbol)}`),
   });
 
+  const managed = useQuery({ queryKey: ["managed"], refetchInterval: 5_000, enabled: futures, queryFn: () => api<{ positions: Managed[] }>("/managed") });
+  const live = (managed.data?.positions ?? []).filter((m) => m.account_id === account.id && m.status !== "closed");
+
   const lines: ChartLine[] = useMemo(() => {
     const out: ChartLine[] = [];
     for (const p of mine.filter((p) => p.symbol === symbol)) {
@@ -78,12 +90,16 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
       if (p.entryPrice) out.push({ price: p.entryPrice, title: `${t("tr.entryLine")} ${side} ${pct(p.pnlPct)}`, color: p.side === "long" ? "#22c58b" : "#f0525f" });
       if (p.liquidationPrice) out.push({ price: p.liquidationPrice, title: `${t("tr.liqLine")} ${side}`, color: "#f5b84a", dashed: true });
     }
+    for (const m of live.filter((m) => m.symbol === symbol)) {
+      if (m.stop_price) out.push({ price: Number(m.stop_price), title: `${t("mg.slLine")}${m.stop_kind === "breakeven" ? " BE" : m.stop_kind === "trailing" ? " trail" : ""}`, color: "#f0525f", dashed: true });
+      for (const tk of m.takes.filter((x) => x.state === "open")) out.push({ price: tk.price, title: t("mg.tpLine", { n: tk.n }), color: "#22c58b", dashed: true });
+    }
     for (const o of orders.data?.orders ?? []) {
       const px = o.price ?? o.triggerPrice;
       if (px) out.push({ price: px, title: `${o.side === "buy" ? "BUY" : "SELL"} ${o.type}${o.reduceOnly ? ` · ${t("tr.reduceOnly")}` : ""}`, color: "#5b8cff", dashed: true });
     }
     return out;
-  }, [JSON.stringify(mine), JSON.stringify(orders.data), symbol, t.lang]);
+  }, [JSON.stringify(mine), JSON.stringify(orders.data), JSON.stringify(live), symbol, t.lang]);
 
   const last = feed.tick?.last ?? hist.data?.candles.at(-1)?.[4] ?? null;
   const prec = decimals(mkt?.tick ?? null);
@@ -108,7 +124,7 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_200px_300px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_190px_330px]">
         <div className="relative h-[52vh] min-h-[320px] border-b border-line lg:h-auto lg:border-b-0 lg:border-r">
           {hist.isLoading || markets.isLoading ? <div className="flex h-full items-center justify-center text-muted"><Spinner /></div>
             : hist.error ? <div className="p-4"><Alert>{String((hist.error as any)?.body?.exchangeError?.message ?? hist.error)}</Alert></div>
@@ -125,7 +141,7 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
           <TabBtn on={tab === "orders" || !futures} onClick={() => setTab("orders")}>{t("tr.orders")} ({orders.data?.orders.length ?? 0})</TabBtn>
         </div>
         {tab === "positions" && futures
-          ? <PositionsTable account={account} positions={mine} onPick={setSymbol} />
+          ? <PositionsTable account={account} positions={mine} managed={live} onPick={setSymbol} />
           : <OrdersTable account={account} symbol={symbol} orders={orders.data?.orders ?? []} />}
       </div>
     </div>
@@ -197,11 +213,12 @@ function OrderBook({ book, prec }: { book: Book | null; prec: number }) {
   );
 }
 
-function PositionsTable({ account, positions, onPick }: { account: Account; positions: Position[]; onPick: (s: string) => void }) {
+function PositionsTable({ account, positions, managed, onPick }: { account: Account; positions: Position[]; managed: Managed[]; onPick: (s: string) => void }) {
   const t = useT();
   const qc = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ p: Position; m: Managed | null } | null>(null);
   const close = async (p: Position, percent: number) => {
     if (!confirm(t("tr.closeConfirm", { pct: percent, coin: p.coin }))) return;
     setBusy(`${p.symbol}${p.side}`); setErr(null);
@@ -223,6 +240,24 @@ function PositionsTable({ account, positions, onPick }: { account: Account; posi
               <td className="num px-3 py-2 text-right text-muted">{t("positions.entry")} {num(p.entryPrice, t.lang)}</td>
               <td className={`num px-3 py-2 text-right ${tone(p.unrealizedPnl)}`}>{signedUsd(p.unrealizedPnl, t.lang)} · {pct(p.pnlPct)}</td>
               <td className="num px-3 py-2 text-right text-warn">{t("positions.liq")} {num(p.liquidationPrice, t.lang)}</td>
+              <td className="px-3 py-2 text-xs">
+                {(() => {
+                  const m = managed.find((x) => x.symbol === p.symbol && x.side === p.side);
+                  if (!m) return <button className="text-accent hover:underline" onClick={() => setEditing({ p, m: null })}>{t("mg.take")}</button>;
+                  const done = m.takes.filter((x) => x.state === "filled").length;
+                  const kind = m.stop_kind ? t(`mg.stopKind.${m.stop_kind}` as Key) : "";
+                  return (
+                    <button className="text-left hover:text-accent" onClick={() => setEditing({ p, m })}>
+                      {m.status === "pending" ? <span className="text-muted">{t("mg.pending")}</span> : <>
+                        {m.stop_price ? <span className="text-down">{t("mg.stopAt", { v: num(Number(m.stop_price), t.lang) })}{kind && kind !== `mg.stopKind.${m.stop_kind}` ? ` · ${kind}` : ""}</span> : null}
+                        {m.takes.length > 0 && <span className="ml-2 text-up">{t("mg.takes", { done, all: m.takes.length })}</span>}
+                        {m.stop_where === "vektor" && <div className="text-muted">{t("mg.vektorStop")}</div>}
+                      </>}
+                      {m.last_error && <div className="text-down">{t("mg.error", { e: m.last_error.slice(0, 60) })}</div>}
+                    </button>
+                  );
+                })()}
+              </td>
               <td className="px-3 py-2 text-right">
                 <div className="flex justify-end gap-1">
                   {[25, 50].map((x) => <Button key={x} size="sm" variant="outline" disabled={busy !== null} onClick={() => close(p, x)}>{x}%</Button>)}
@@ -233,7 +268,47 @@ function PositionsTable({ account, positions, onPick }: { account: Account; posi
           ))}
         </tbody>
       </table>
+      {editing && <ManageModal account={account} pos={editing.p} managed={editing.m} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+function ManageModal({ account, pos, managed, onClose }: { account: Account; pos: Position; managed: Managed | null; onClose: () => void }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [plan, setPlan] = useState<Plan>(managed?.plan ?? DEFAULT_PLAN);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const entry = managed?.entry_price ? Number(managed.entry_price) : pos.entryPrice;
+  const prec = Math.max(2, Math.min(8, 6 - Math.floor(Math.log10(Math.max(entry ?? 1, 1e-8)))));
+  const bad = planProblems(plan, pos.side, entry).length > 0;
+  const done = () => { void qc.invalidateQueries({ queryKey: ["managed"] }); onClose(); };
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try {
+      if (managed) await api(`/managed/${managed.id}`, { method: "PATCH", body: { plan } });
+      else await api("/managed", { body: { accountId: account.id, symbol: pos.symbol, side: pos.side, plan, lang: t.lang } });
+      done();
+    } catch (e: any) {
+      const k = `plan.${e?.code}` as Key;
+      setErr(t(k) !== k ? t(k) : e?.body?.exchangeError?.message ?? t("err.generic"));
+    } finally { setBusy(false); }
+  };
+  const unmanage = async () => {
+    if (!managed || !confirm(t("mg.stopConfirm"))) return;
+    await api(`/managed/${managed.id}`, { method: "DELETE" });
+    done();
+  };
+  return (
+    <Modal open onClose={onClose} title={t("mg.title", { coin: pos.coin })}>
+      {!managed && <div className="mb-3 text-sm text-muted">{t("mg.external")}</div>}
+      <PlanEditor plan={plan} onChange={setPlan} side={pos.side} entry={entry} prec={prec} />
+      {err && <div className="mt-3"><Alert>{err}</Alert></div>}
+      <div className="mt-4 flex items-center justify-between gap-2">
+        {managed ? <Button variant="danger" size="sm" onClick={unmanage}>{t("mg.stopManaging")}</Button> : <span />}
+        <Button onClick={save} disabled={busy || bad}>{busy ? <Spinner /> : managed ? t("mg.save") : t("mg.take")}</Button>
+      </div>
+    </Modal>
   );
 }
 

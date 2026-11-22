@@ -27,9 +27,10 @@
 | `VEKTOR_SESSION_SECRET` | любая длинная случайная строка — подпись кодов входа и сессий |
 | `RESEND_API_KEY`, `MAIL_FROM` | отправка кодов входа (resend.com). `MAIL_FROM` вида `Vektor <login@домен>` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | бот уведомлений Vektor (новый бот у @BotFather, не бот Люси) |
+| `ENGINE_ENABLED` | движок ведения позиций: в опубликованной версии включён сам (выключить — `0`); в dev выключен (включить — `1`) |
 | `TELEGRAM_POLLING` | `1` только в опубликованной версии (иначе dev и prod отбирают друг у друга сообщения бота) |
 
 ## Структура
 
-- `artifacts/api-server` — Express 5 + pg + CCXT. `src/routes` — HTTP, `src/exchanges` — биржи, `src/telegram` — уведомления.
+- `artifacts/api-server` — Express 5 + pg + CCXT. `src/routes` — HTTP, `src/exchanges` — биржи, `src/engine` — ведение позиций, `src/telegram` — уведомления.
 - `artifacts/web` — React 19 + Vite + Tailwind 4. `src/pages`, `src/components`, `src/lib/i18n.tsx` (RU/EN).
