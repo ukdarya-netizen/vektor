@@ -94,7 +94,7 @@ export async function tickGrid(g: Row, a: AccountRow & { label: string }, ex: an
     if (open.has(o.id)) continue;
     const f = await ex.fetchOrder(o.id, s.symbol).catch(() => null);
     if (!f || f.status !== "closed") {
-      // Cancelled outside Vektor: drop it (not re-placed — the user took it away).
+      // Cancelled outside VECTOR: drop it (not re-placed — the user took it away).
       if (f && (f.status === "canceled" || f.status === "cancelled")) { st.orders = st.orders.filter((x) => x !== o); changed = true; }
       continue;
     }

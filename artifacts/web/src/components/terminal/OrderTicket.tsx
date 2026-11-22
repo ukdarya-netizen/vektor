@@ -125,10 +125,16 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-1 rounded-lg bg-bg p-1">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 text-sm">
+          <span className="rounded-lg bg-gradient-to-b from-accent/25 to-violet/10 px-3 py-1.5 font-medium text-white shadow-[inset_0_0_0_1px_rgba(99,102,241,0.3)]">{futures ? "Futures" : "Spot"}</span>
+        </div>
+        <span className="text-xs text-muted">{account.label}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-bg/70 p-1">
         {(["long", "short"] as const).map((s) => (
           <button key={s} onClick={() => setSide(s)}
-            className={cx("rounded-md py-2 text-sm font-semibold transition", side === s ? (s === "long" ? "bg-up text-white" : "bg-down text-white") : "text-muted hover:text-text")}>
+            className={cx("rounded-lg py-2.5 text-sm font-semibold transition", side === s ? (s === "long" ? "brand-gradient text-white shadow-[0_6px_18px_-8px_rgba(59,130,246,0.8)]" : "short-gradient text-white shadow-[0_6px_18px_-8px_rgba(244,63,94,0.7)]") : "text-muted hover:text-text")}>
             {futures ? t(s === "long" ? "tr.long" : "tr.short") : t(s === "long" ? "tr.buy" : "tr.sell")}
           </button>
         ))}
@@ -138,7 +144,7 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
         <div className="flex items-center gap-2">
           <select className="h-8 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 text-xs" value="" aria-label={t("tpl.title")}
             onChange={(e) => e.target.value && applyTemplate(Number(e.target.value))}>
-            <option value="">{t("tpl.title")}: {t("tpl.none")}</option>
+            <option value="">{t("tpl.title")}…</option>
             {tpls.data?.templates.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
           <button className="shrink-0 text-xs text-accent hover:underline" onClick={saveTemplate}>{t("tpl.save")}</button>
@@ -172,13 +178,19 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
       )}
 
       <Field label={mode === "percent" ? "%" : futures ? t("tr.margin") : t("tr.amountUsdt")} suffix={mode === "percent" ? "%" : "USDT"}>
-        <input inputMode="decimal" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value.replace(",", "."))} className="w-full bg-transparent outline-none num" />
+        <input inputMode="decimal" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value.replace(",", "."))} className="num w-full bg-transparent text-base outline-none" />
       </Field>
-      <div className="grid grid-cols-4 gap-1">
-        {[10, 25, 50, 100].map((p) => (
-          <button key={p} onClick={() => { setMode("percent"); setAmount(String(p)); }}
-            className={cx("rounded-md border py-1.5 text-xs", mode === "percent" && Number(amount) === p ? "border-accent text-text" : "border-line text-muted hover:text-text")}>{p}%</button>
-        ))}
+      {/* % of balance: slider with stops like the design (0 / 25 / 50 / 75 / 100) */}
+      <div className="px-1">
+        <input type="range" min={0} max={100} step={1} value={mode === "percent" ? Number(amount) || 0 : 0}
+          onChange={(e) => { setMode("percent"); setAmount(e.target.value === "0" ? "" : e.target.value); }}
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-[#8b5cf6]"
+          style={{ background: `linear-gradient(90deg, #3b82f6, #8b5cf6 ${mode === "percent" ? Number(amount) || 0 : 0}%, #1e293b ${mode === "percent" ? Number(amount) || 0 : 0}%)` }} />
+        <div className="mt-1.5 flex justify-between text-[11px] text-muted">
+          {[0, 25, 50, 75, 100].map((p) => (
+            <button key={p} onClick={() => { setMode("percent"); setAmount(p ? String(p) : ""); }} className={cx("num hover:text-text", mode === "percent" && Number(amount) === p && "text-text")}>{p}%</button>
+          ))}
+        </div>
       </div>
       <div className="flex items-center justify-between text-xs text-muted">
         <span>{t("tr.available", { v: avail })}</span>
@@ -227,7 +239,7 @@ export function OrderTicket({ account, mkt, tick, ref }: { account: Account; mkt
       )}
 
       <Button size="lg" onClick={() => void submit()} disabled={busy || !body || (pf ? !pf.ok : true) || planBad}
-        className={cx("w-full", long ? "!bg-up hover:!bg-up/90" : "!bg-down hover:!bg-down/90")}>
+        variant={long ? "primary" : "short"} className="h-12 w-full text-base">
         {busy ? <><Spinner /> {t("tr.sending")}</> : futures ? t(long ? "tr.openLong" : "tr.openShort") : t(long ? "tr.buyBtn" : "tr.sellBtn", { coin })}
       </Button>
       {result && <Alert tone={result.tone}>{result.text}</Alert>}
@@ -242,8 +254,8 @@ const Row = ({ k, v }: { k: string; v: string }) => (
 function Field({ label, suffix, children }: { label: string; suffix: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-muted">{label}</span>
-      <span className="flex h-10 items-center gap-2 rounded-lg border border-line bg-bg px-3 focus-within:border-accent">
+      <span className="mb-1.5 block text-xs text-muted">{label}</span>
+      <span className="flex h-12 items-center gap-2 rounded-xl border border-line bg-bg/70 px-3.5 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
         {children}
         <span className="text-xs text-muted">{suffix}</span>
       </span>

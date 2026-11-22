@@ -47,7 +47,7 @@ notificationsRouter.post("/push", async (req, res) => {
   await q(`INSERT INTO vk_push_subs (user_id, endpoint, keys, user_agent) VALUES ($1, $2, $3, $4)
            ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, keys = EXCLUDED.keys`,
     [user.id, b.data.endpoint, JSON.stringify(b.data.keys), String(req.headers["user-agent"] ?? "").slice(0, 200)]);
-  const sent = await sendPush(user.id, "Vektor", user.lang === "en" ? "Push notifications are on." : "Push-уведомления включены.");
+  const sent = await sendPush(user.id, "VECTOR", user.lang === "en" ? "Push notifications are on." : "Push-уведомления включены.");
   res.json({ ok: true, sent });
 });
 

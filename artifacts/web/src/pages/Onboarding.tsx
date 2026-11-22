@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type Account } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Button, Card, cx } from "@/components/ui";
+import { Wordmark } from "@/components/Brand";
 import { ConnectExchange } from "@/components/ConnectExchange";
 import { TelegramConnect } from "@/components/TelegramConnect";
 
@@ -19,7 +20,8 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
   return (
     <div className="flex min-h-full items-center justify-center px-4 py-10">
       <div className="w-full max-w-lg">
-        <h1 className="text-2xl font-semibold">{t("onb.title")}</h1>
+        <div className="mb-8"><Wordmark sub /></div>
+        <h1 className="font-display text-3xl font-semibold">{t("onb.title")}</h1>
         <ol className="mt-6 grid grid-cols-3 gap-2 text-sm">
           {[t("onb.step1"), t("onb.step2"), t("onb.step3")].map((s, i) => {
             const n = i + 1;

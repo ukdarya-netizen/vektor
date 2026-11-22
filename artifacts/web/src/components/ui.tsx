@@ -2,17 +2,18 @@ import { useEffect, type ButtonHTMLAttributes, type ComponentProps, type ReactNo
 
 const cx = (...c: Array<string | false | null | undefined>) => c.filter(Boolean).join(" ");
 
-export function Button({ variant = "primary", size = "md", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" | "outline"; size?: "sm" | "md" | "lg" }) {
+export function Button({ variant = "primary", size = "md", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" | "outline" | "short"; size?: "sm" | "md" | "lg" }) {
   return (
     <button
       {...p}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed",
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition disabled:opacity-45 disabled:cursor-not-allowed",
         size === "sm" && "h-8 px-3 text-sm",
         size === "md" && "h-10 px-4 text-sm",
         size === "lg" && "h-12 px-5 text-base",
-        variant === "primary" && "bg-accent text-white hover:bg-accent-2",
-        variant === "outline" && "border border-line text-text hover:bg-panel-2",
+        variant === "primary" && "brand-gradient text-white shadow-[0_8px_24px_-10px_rgba(99,102,241,0.7)] hover:brightness-110",
+        variant === "short" && "short-gradient text-white shadow-[0_8px_24px_-10px_rgba(244,63,94,0.6)] hover:brightness-110",
+        variant === "outline" && "border border-line bg-panel/60 text-text hover:border-accent/40 hover:bg-panel-2",
         variant === "ghost" && "text-muted hover:text-text hover:bg-panel-2",
         variant === "danger" && "text-down hover:bg-down/10",
         className,
@@ -28,7 +29,7 @@ export function Input({ label, hint, error, className, ...p }: ComponentProps<"i
       <input
         {...p}
         className={cx(
-          "h-11 w-full rounded-lg border bg-bg px-3 text-text outline-none transition focus:border-accent",
+          "h-11 w-full rounded-xl border bg-bg/70 px-3.5 text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20",
           error ? "border-down" : "border-line",
           className,
         )}
@@ -39,7 +40,7 @@ export function Input({ label, hint, error, className, ...p }: ComponentProps<"i
 }
 
 export const Card = ({ children, className }: { children: ReactNode; className?: string }) => (
-  <div className={cx("rounded-xl border border-line bg-panel", className)}>{children}</div>
+  <div className={cx("rounded-2xl border border-line bg-panel/90 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_20px_40px_-24px_rgba(0,0,0,0.6)]", className)}>{children}</div>
 );
 
 export function Badge({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "up" | "down" | "warn" | "accent" }) {
@@ -51,7 +52,7 @@ export function Badge({ children, tone = "muted" }: { children: ReactNode; tone?
         tone === "up" && "bg-up/15 text-up",
         tone === "down" && "bg-down/15 text-down",
         tone === "warn" && "bg-warn/15 text-warn",
-        tone === "accent" && "bg-accent/15 text-accent",
+        tone === "accent" && "bg-violet/15 text-[#a78bfa]",
       )}
     >
       {children}
@@ -63,7 +64,7 @@ export function Switch({ checked, onChange, disabled }: { checked: boolean; onCh
   return (
     <button
       type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}
-      className={cx("relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50", checked ? "bg-accent" : "bg-line")}
+      className={cx("relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50", checked ? "brand-gradient" : "bg-line")}
     >
       <span className={cx("absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all", checked ? "left-[22px]" : "left-0.5")} />
     </button>
@@ -79,13 +80,13 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#05070d]/75 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
         role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}
-        className={cx("max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl sm:p-6", wide ? "sm:max-w-2xl" : "sm:max-w-md")}
+        className={cx("max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-line bg-panel p-5 shadow-2xl sm:rounded-3xl sm:p-7", wide ? "sm:max-w-2xl" : "sm:max-w-md")}
       >
         <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="font-display text-xl font-semibold">{title}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-muted hover:text-text" aria-label="close">✕</button>
         </div>
         {children}

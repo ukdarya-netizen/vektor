@@ -11,6 +11,7 @@ import type { IndicatorConf } from "@/components/terminal/indicators";
 import { OrderTicket, type Mkt, type TicketHandle } from "@/components/terminal/OrderTicket";
 import { useFeed, type Book } from "@/components/terminal/useFeed";
 import { ConnectExchange } from "@/components/ConnectExchange";
+import { CoinBadge, MarketList } from "@/components/terminal/MarketList";
 import { DEFAULT_PLAN, PlanEditor, planProblems, type Plan } from "@/components/terminal/PlanEditor";
 import { Modal } from "@/components/ui";
 import type { Key } from "@/lib/i18n";
@@ -162,62 +163,90 @@ function Workspace({ account, accounts, onAccount }: { account: Account; account
   const last = feed.tick?.last ?? hist.data?.candles.at(-1)?.[4] ?? null;
   const prec = decimals(mkt?.tick ?? null);
 
+  const ch = feed.tick?.change24h ?? null;
+  const vol = feed.tick?.quoteVolume ?? null;
+  const Stat = ({ k, v }: { k: string; v: string }) => (
+    <div className="hidden leading-tight xl:block"><div className="text-[11px] text-muted">{k}</div><div className="num mt-0.5 text-sm">{v}</div></div>
+  );
+  const coin = mkt?.base ?? symbol.split("/")[0];
+
   return (
-    <div className="-mx-4 -my-5 flex min-h-full flex-col md:-mx-6">
-      {/* Top bar: account · coin · timeframe · price */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-        <select className="h-9 rounded-lg border border-line bg-bg px-2 text-sm" value={account.id} onChange={(e) => onAccount(Number(e.target.value))} aria-label={t("tr.account")}>
-          {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
-        </select>
-        <SymbolPicker markets={markets.data?.markets ?? []} value={symbol} onChange={setSymbol} />
-        <div className="flex overflow-x-auto rounded-lg border border-line bg-bg p-0.5">
-          {TFS.map((x) => (
-            <button key={x} onClick={() => setTf(x)} className={cx("rounded-md px-2 py-1 text-xs", tf === x ? "bg-panel-2 text-text" : "text-muted hover:text-text")}>{x}</button>
-          ))}
-        </div>
-        <IndicatorMenu value={indicators} onChange={setIndicators} />
-        <Copilot accountId={account.id} symbol={symbol} managed={live} positions={positions.data?.positions ?? []} />
-        {hotkeys && <Badge tone="warn">{t("hk.on")}</Badge>}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="num text-lg font-semibold">{last !== null ? last.toFixed(prec) : "—"}</span>
-          {feed.stale ? <Badge tone="down">{t("tr.stale")}</Badge> : feed.mode && <span className="text-xs text-muted">{feed.mode === "ws" ? t("tr.dataWs") : t("tr.dataPoll")}</span>}
-          {account.env === "paper" ? <Badge tone="accent">{t("mode.paper")}</Badge> : account.env === "testnet" ? <Badge tone="warn">{t("mode.testnet")}</Badge> : <Badge tone="down">{t("mode.live")}</Badge>}
-        </div>
-      </div>
+    <div className="flex min-h-full flex-col gap-3 p-3 xl:h-full xl:min-h-0">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[250px_1fr_340px]">
+        {/* Markets / watchlist */}
+        <Card className="hidden min-h-0 overflow-hidden xl:block"><MarketList accountId={account.id} exchange={account.exchange} symbol={symbol} onPick={setSymbol} /></Card>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_190px_330px]">
-        <div className="flex min-h-0 flex-col border-b border-line lg:flex-row lg:border-b-0 lg:border-r">
-          <DrawToolbar tool={tool} setTool={setTool} magnet={magnet} setMagnet={setMagnet} locked={locked} setLocked={setLocked} hidden={hidden} setHidden={setHidden}
-            canUndo={draw.canUndo} onUndo={draw.undo} onClear={() => confirm(t("draw.clearConfirm")) && draw.setDrawings([])} hotkeys={hotkeys} setHotkeys={setHotkeys} />
-          <div className="relative h-[52vh] min-h-[320px] flex-1 lg:h-auto">
-            {dragErr && <div className="absolute left-2 top-2 z-20"><Alert>{dragErr}</Alert></div>}
-            {hist.isLoading || markets.isLoading ? <div className="flex h-full items-center justify-center text-muted"><Spinner /></div>
-              : hist.error ? <div className="p-4"><Alert>{String((hist.error as any)?.body?.exchangeError?.message ?? hist.error)}</Alert></div>
-              : <Chart candles={hist.data?.candles ?? null} live={feed.live} lines={lines} precision={prec} indicators={indicators}
-                  drawings={draw.drawings} onDrawings={draw.setDrawings} tool={tool} onToolDone={() => setTool("cursor")}
-                  magnet={magnet} locked={locked} hidden={hidden} onLineDrag={onLineDrag} askText={() => prompt(t("draw.textPrompt"))} />}
-          </div>
-        </div>
-        <div className="hidden border-r border-line lg:block"><OrderBook book={feed.book} prec={prec} /></div>
-        <div className="border-b border-line p-3 lg:border-b-0"><OrderTicket ref={ticket} account={account} mkt={mkt} tick={feed.tick} /></div>
-      </div>
+        {/* Center: coin header, chart, positions */}
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
+          <Card className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <CoinBadge coin={coin} size={34} />
+              <SymbolPicker markets={markets.data?.markets ?? []} value={symbol} onChange={setSymbol} />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="num text-2xl font-semibold">{last !== null ? last.toFixed(prec) : "—"}</span>
+              {ch !== null && <span className={cx("num text-sm font-medium", ch >= 0 ? "text-up" : "text-down")}>{ch >= 0 ? "+" : ""}{ch.toFixed(2)}%</span>}
+            </div>
+            <Stat k={t("mk.high")} v={feed.tick?.high ? feed.tick.high.toFixed(prec) : "—"} />
+            <Stat k={t("mk.low")} v={feed.tick?.low ? feed.tick.low.toFixed(prec) : "—"} />
+            <Stat k={t("mk.vol")} v={vol ? `${(vol / 1e6).toFixed(vol > 1e8 ? 0 : 2)}M USDT` : "—"} />
+            <div className="ml-auto flex items-center gap-2">
+              {feed.stale ? <Badge tone="down">{t("tr.stale")}</Badge> : feed.mode && <span className="flex items-center gap-1.5 text-xs text-muted"><span className="h-1.5 w-1.5 rounded-full bg-up shadow-[0_0_6px_#22c55e]" />{feed.mode === "ws" ? t("tr.dataWs") : t("tr.dataPoll")}</span>}
+              <select className="h-10 rounded-xl border border-line bg-bg/70 px-3 text-sm font-medium" value={account.id} onChange={(e) => onAccount(Number(e.target.value))} aria-label={t("tr.account")}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+              </select>
+              {account.env === "paper" ? <Badge tone="accent">{t("mode.paper")}</Badge> : account.env === "testnet" ? <Badge tone="warn">{t("mode.testnet")}</Badge> : <Badge tone="down">{t("mode.live")}</Badge>}
+            </div>
+          </Card>
 
-      {/* Bottom: positions and orders of this account */}
-      <div className="border-t border-line">
-        <div className="flex gap-4 px-3 pt-2 text-sm">
-          {futures && <TabBtn on={tab === "positions"} onClick={() => setTab("positions")}>{t("tr.positions")} ({mine.length})</TabBtn>}
-          <TabBtn on={tab === "orders" || !futures} onClick={() => setTab("orders")}>{t("tr.orders")} ({orders.data?.orders.length ?? 0})</TabBtn>
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+              <div className="flex overflow-x-auto rounded-xl bg-bg/70 p-1">
+                {TFS.map((x) => (
+                  <button key={x} onClick={() => setTf(x)} className={cx("rounded-lg px-2.5 py-1 text-xs font-medium", tf === x ? "bg-gradient-to-b from-accent/30 to-violet/15 text-white shadow-[inset_0_0_0_1px_rgba(99,102,241,0.35)]" : "text-muted hover:text-text")}>{x}</button>
+                ))}
+              </div>
+              <IndicatorMenu value={indicators} onChange={setIndicators} />
+              <Copilot accountId={account.id} symbol={symbol} managed={live} positions={positions.data?.positions ?? []} />
+              {hotkeys && <Badge tone="warn">{t("hk.on")}</Badge>}
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+              <DrawToolbar tool={tool} setTool={setTool} magnet={magnet} setMagnet={setMagnet} locked={locked} setLocked={setLocked} hidden={hidden} setHidden={setHidden}
+                canUndo={draw.canUndo} onUndo={draw.undo} onClear={() => confirm(t("draw.clearConfirm")) && draw.setDrawings([])} hotkeys={hotkeys} setHotkeys={setHotkeys} />
+              <div className="relative h-[50vh] min-h-[340px] flex-1 xl:h-auto">
+                {dragErr && <div className="absolute left-2 top-2 z-20"><Alert>{dragErr}</Alert></div>}
+                {hist.isLoading || markets.isLoading ? <div className="flex h-full items-center justify-center text-muted"><Spinner /></div>
+                  : hist.error ? <div className="p-4"><Alert>{String((hist.error as any)?.body?.exchangeError?.message ?? hist.error)}</Alert></div>
+                  : <Chart candles={hist.data?.candles ?? null} live={feed.live} lines={lines} precision={prec} indicators={indicators}
+                      drawings={draw.drawings} onDrawings={draw.setDrawings} tool={tool} onToolDone={() => setTool("cursor")}
+                      magnet={magnet} locked={locked} hidden={hidden} onLineDrag={onLineDrag} askText={() => prompt(t("draw.textPrompt"))} />}
+              </div>
+              <div className="hidden w-[190px] shrink-0 border-l border-line 2xl:block"><OrderBook book={feed.book} prec={prec} /></div>
+            </div>
+          </Card>
+
+          <Card className="max-h-[34vh] min-h-[150px] overflow-y-auto">
+            <div className="flex gap-1 border-b border-line px-3 pt-2 text-sm">
+              {futures && <TabBtn on={tab === "positions"} onClick={() => setTab("positions")}>{t("tr.positions")} ({mine.length})</TabBtn>}
+              <TabBtn on={tab === "orders" || !futures} onClick={() => setTab("orders")}>{t("tr.orders")} ({orders.data?.orders.length ?? 0})</TabBtn>
+            </div>
+            {tab === "positions" && futures
+              ? <PositionsTable account={account} positions={mine} managed={live} onPick={setSymbol} />
+              : <OrdersTable account={account} symbol={symbol} orders={orders.data?.orders ?? []} />}
+          </Card>
         </div>
-        {tab === "positions" && futures
-          ? <PositionsTable account={account} positions={mine} managed={live} onPick={setSymbol} />
-          : <OrdersTable account={account} symbol={symbol} orders={orders.data?.orders ?? []} />}
+
+        {/* Order ticket */}
+        <Card className="min-h-0 overflow-y-auto p-4"><OrderTicket ref={ticket} account={account} mkt={mkt} tick={feed.tick} /></Card>
       </div>
     </div>
   );
 }
 
 const TabBtn = ({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) => (
-  <button onClick={onClick} className={cx("border-b-2 pb-1.5", on ? "border-accent text-text" : "border-transparent text-muted")}>{children}</button>
+  <button onClick={onClick} className={cx("relative px-3 pb-2.5 pt-1 font-medium", on ? "text-white" : "text-muted hover:text-text")}>
+    {children}{on && <span className="brand-gradient absolute inset-x-2 bottom-0 h-0.5 rounded-full" />}
+  </button>
 );
 
 function SymbolPicker({ markets, value, onChange }: { markets: Mkt[]; value: string; onChange: (s: string) => void }) {
@@ -237,8 +266,8 @@ function SymbolPicker({ markets, value, onChange }: { markets: Mkt[]; value: str
   const cur = markets.find((m) => m.symbol === value);
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="flex h-9 items-center gap-2 rounded-lg border border-line bg-bg px-3 text-sm font-semibold">
-        {cur ? `${cur.base}/${cur.quote}` : value.split(":")[0]} <span className="text-muted">▾</span>
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 rounded-lg px-1 py-1 font-display text-lg font-semibold hover:bg-panel-2">
+        {cur ? `${cur.base}/${cur.quote}` : value.split(":")[0]} <span className="text-sm text-muted">▾</span>
       </button>
       {open && (
         <div className="absolute left-0 top-11 z-30 w-64 rounded-xl border border-line bg-panel p-2 shadow-2xl">
@@ -266,8 +295,8 @@ function OrderBook({ book, prec }: { book: Book | null; prec: number }) {
   const spread = book.asks[0] && book.bids[0] ? book.asks[0][0] - book.bids[0][0] : null;
   const Row = ({ r, side }: { r: number[]; side: "a" | "b" }) => (
     <div className="relative flex justify-between px-3 py-[2px] text-xs num">
-      <span className={cx("absolute inset-y-0 right-0", side === "a" ? "bg-down/10" : "bg-up/10")} style={{ width: `${(r[1] / max) * 100}%` }} />
-      <span className={cx("relative", side === "a" ? "text-down" : "text-up")}>{r[0].toFixed(prec)}</span>
+      <span className={cx("absolute inset-y-0 right-0", side === "a" ? "bg-violet/12" : "bg-accent/12")} style={{ width: `${(r[1] / max) * 100}%` }} />
+      <span className={cx("relative", side === "a" ? "text-[#a78bfa]" : "text-[#60a5fa]")}>{r[0].toFixed(prec)}</span>
       <span className="relative text-muted">{r[1] < 1 ? r[1].toPrecision(3) : r[1].toFixed(r[1] < 100 ? 2 : 0)}</span>
     </div>
   );
@@ -294,46 +323,56 @@ function PositionsTable({ account, positions, managed, onPick }: { account: Acco
     catch (e: any) { setErr(e?.body?.exchangeError?.message ?? t("err.generic")); }
     finally { setBusy(null); void qc.invalidateQueries({ queryKey: ["positions"] }); }
   };
-  if (!positions.length) return <div className="px-3 py-6 text-sm text-muted">{t("positions.empty")}</div>;
+  if (!positions.length) return <div className="px-4 py-6 text-sm text-muted">{t("positions.empty")}</div>;
+  const th = "px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted";
   return (
     <div className="overflow-x-auto">
       {err && <div className="px-3 pt-2"><Alert>{err}</Alert></div>}
-      <table className="w-full min-w-[760px] text-sm">
+      <table className="w-full min-w-[880px] text-sm">
+        <thead>
+          <tr className="border-b border-line">
+            <th className={th}>{t("mk.pair")}</th><th className={th}>{t("positions.account")}</th><th className={th}>{t("positions.side")}</th>
+            <th className={`${th} text-right`}>{t("positions.size")}</th><th className={`${th} text-right`}>{t("positions.entry")}</th>
+            <th className={`${th} text-right`}>PNL</th><th className={`${th} text-right`}>PNL %</th><th className={`${th} text-right`}>{t("positions.liq")}</th>
+            <th className={th}>{t("mg.edit")}</th><th className={th} />
+          </tr>
+        </thead>
         <tbody>
-          {positions.map((p) => (
-            <tr key={`${p.symbol}${p.side}`} className="border-t border-line/60">
-              <td className="px-3 py-2"><button className="font-medium hover:text-accent" onClick={() => onPick(p.symbol)}>{p.coin}</button></td>
-              <td className="px-3 py-2"><Badge tone={p.side === "long" ? "up" : "down"}>{p.side === "long" ? t("tr.long") : t("tr.short")} {p.leverage ? `${p.leverage}x` : ""}</Badge></td>
-              <td className="num px-3 py-2 text-right">{num(p.size, t.lang)}</td>
-              <td className="num px-3 py-2 text-right text-muted">{t("positions.entry")} {num(p.entryPrice, t.lang)}</td>
-              <td className={`num px-3 py-2 text-right ${tone(p.unrealizedPnl)}`}>{signedUsd(p.unrealizedPnl, t.lang)} · {pct(p.pnlPct)}</td>
-              <td className="num px-3 py-2 text-right text-warn">{t("positions.liq")} {num(p.liquidationPrice, t.lang)}</td>
-              <td className="px-3 py-2 text-xs">
-                {(() => {
-                  const m = managed.find((x) => x.symbol === p.symbol && x.side === p.side);
-                  if (!m) return <button className="text-accent hover:underline" onClick={() => setEditing({ p, m: null })}>{t("mg.take")}</button>;
-                  const done = m.takes.filter((x) => x.state === "filled").length;
-                  const kind = m.stop_kind ? t(`mg.stopKind.${m.stop_kind}` as Key) : "";
-                  return (
+          {positions.map((p) => {
+            const m = managed.find((x) => x.symbol === p.symbol && x.side === p.side);
+            const done = m ? m.takes.filter((x) => x.state === "filled").length : 0;
+            const kind = m?.stop_kind ? t(`mg.stopKind.${m.stop_kind}` as Key) : "";
+            return (
+              <tr key={`${p.symbol}${p.side}`} className="border-b border-line/50 last:border-0 hover:bg-panel-2/40">
+                <td className="px-3 py-2.5"><button className="flex items-center gap-2 font-medium hover:text-accent" onClick={() => onPick(p.symbol)}><CoinBadge coin={p.coin} size={22} />{p.coin}/USDT</button></td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-muted">{account.label}</td>
+                <td className="px-3 py-2.5"><span className={p.side === "long" ? "text-up" : "text-down"}>{p.side === "long" ? t("tr.long") : t("tr.short")}</span> <span className="text-muted">{p.leverage ? `${p.leverage}x` : ""}</span></td>
+                <td className="num px-3 py-2.5 text-right">{num(p.size)}</td>
+                <td className="num px-3 py-2.5 text-right">{num(p.entryPrice)}</td>
+                <td className={`num px-3 py-2.5 text-right ${tone(p.unrealizedPnl)}`}>{p.unrealizedPnl !== null ? `${p.unrealizedPnl >= 0 ? "+" : ""}${p.unrealizedPnl.toFixed(2)}` : "—"}</td>
+                <td className={`num px-3 py-2.5 text-right ${tone(p.pnlPct)}`}>{pct(p.pnlPct)}</td>
+                <td className="num px-3 py-2.5 text-right text-warn">{num(p.liquidationPrice)}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-xs">
+                  {!m ? <button className="text-accent hover:underline" onClick={() => setEditing({ p, m: null })}>{t("mg.take")}</button> : (
                     <button className="text-left hover:text-accent" onClick={() => setEditing({ p, m })}>
                       {m.status === "pending" ? <span className="text-muted">{t("mg.pending")}</span> : <>
-                        {m.stop_price ? <span className="text-down">{t("mg.stopAt", { v: num(Number(m.stop_price), t.lang) })}{kind && kind !== `mg.stopKind.${m.stop_kind}` ? ` · ${kind}` : ""}</span> : null}
+                        {m.stop_price ? <span className="num text-down">SL {num(Number(m.stop_price))}{kind && kind !== `mg.stopKind.${m.stop_kind}` ? ` · ${kind}` : ""}</span> : null}
                         {m.takes.length > 0 && <span className="ml-2 text-up">{t("mg.takes", { done, all: m.takes.length })}</span>}
                         {m.stop_where === "vektor" && <div className="text-muted">{t("mg.vektorStop")}</div>}
                       </>}
                       {m.last_error && <div className="text-down">{t("mg.error", { e: m.last_error.slice(0, 60) })}</div>}
                     </button>
-                  );
-                })()}
-              </td>
-              <td className="px-3 py-2 text-right">
-                <div className="flex justify-end gap-1">
-                  {[25, 50].map((x) => <Button key={x} size="sm" variant="outline" disabled={busy !== null} onClick={() => close(p, x)}>{x}%</Button>)}
-                  <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => close(p, 100)}>{busy === `${p.symbol}${p.side}` ? <Spinner /> : t("tr.closeAll")}</Button>
-                </div>
-              </td>
-            </tr>
-          ))}
+                  )}
+                </td>
+                <td className="px-3 py-2.5">
+                  <div className="flex justify-end gap-1">
+                    {[25, 50].map((x) => <Button key={x} size="sm" variant="outline" disabled={busy !== null} onClick={() => close(p, x)}>{x}%</Button>)}
+                    <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => close(p, 100)}>{busy === `${p.symbol}${p.side}` ? <Spinner /> : t("tr.close")}</Button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {editing && <ManageModal account={account} pos={editing.p} managed={editing.m} onClose={() => setEditing(null)} />}

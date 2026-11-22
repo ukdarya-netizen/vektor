@@ -1,5 +1,5 @@
 /**
- * Position manager. Every CYCLE_MS, per account: compares what Vektor manages with what is really
+ * Position manager. Every CYCLE_MS, per account: compares what VECTOR manages with what is really
  * on the exchange and fixes the difference — places/moves the stop, places takes, moves the stop to
  * break-even and trails it, notices partial and full closes, books the real result from fills.
  *
@@ -133,7 +133,7 @@ export function createManager(deps: Deps) {
     await say(p.user_id, "opened", T.opened(c.h, {
       side: p.side, entry, qty: qty * Number(market(ex, p.symbol)?.contractSize ?? 1), leverage: p.leverage, margin: pos.initialMargin ?? pos.collateral ?? null,
       stop: p.stop_price, liq: pos.liquidationPrice ?? null, takes: p.takes.map((t) => ({ price: t.price, closePct: Math.round((t.qty / qty) * 100) })),
-      managedBy: p.stop_where === "vektor" ? "Vektor (стоп на сервере Vektor — биржа не поддерживает стоп-ордера)" : null, delayS,
+      managedBy: p.stop_where === "vektor" ? "VECTOR (стоп на сервере VECTOR — биржа не поддерживает стоп-ордера)" : null, delayS,
     }));
   }
 
@@ -248,7 +248,7 @@ export function createManager(deps: Deps) {
     return t?.last ?? null;
   }
 
-  /** Vektor closes the position itself; the reason is kept and used when the close is booked. */
+  /** VECTOR closes the position itself; the reason is kept and used when the close is booked. */
   async function closeMarket(c: Ctx, reason: string) {
     const { p, ex, a } = c;
     await update(p, { pending_close_reason: reason });
@@ -305,7 +305,7 @@ export function createManager(deps: Deps) {
     const best = p.best_price === null ? last : p.side === "long" ? Math.max(p.best_price, last) : Math.min(p.best_price, last);
     if (best !== p.best_price) await update(p, { best_price: best });
 
-    // Stop kept by Vektor (exchange without stop orders): close when crossed.
+    // Stop kept by VECTOR (exchange without stop orders): close when crossed.
     if (p.stop_where === "vektor" && p.stop_price !== null && stopCrossed(p.side, p.stop_price, last)) {
       await closeMarket(c, stopCloseKey(p.stop_kind ?? "initial", movePct(p.side, p.entry_price!, last)));
       return;
@@ -424,9 +424,9 @@ export function createManager(deps: Deps) {
   }
 
   /** Position is gone from the exchange: real exit and result from the fills. */
-  async function finalize(c: Ctx, byVektor = false) {
+  async function finalize(c: Ctx, byVECTOR = false) {
     const { p, ex } = c;
-    if (!byVektor) {
+    if (!byVECTOR) {
       // Give the exchange a moment to publish fills; a position that just vanished gets one more pass.
       const pos = (await ex.fetchPositions([p.symbol])).find((x: any) => x.symbol === p.symbol && x.side === p.side && contracts(x) > EPS);
       if (pos) return;

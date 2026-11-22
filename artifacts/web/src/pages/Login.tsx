@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { translate, type Key, type Lang } from "@/lib/i18n";
 import { Button, Input } from "@/components/ui";
+import { Wordmark } from "@/components/Brand";
 
 /** One screen for sign-up and sign-in: email → code → in. */
 export function Login({ lang, onLang, onDone }: { lang: Lang; onLang: (l: Lang) => void; onDone: () => void }) {
@@ -53,21 +54,43 @@ export function Login({ lang, onLang, onDone }: { lang: Lang; onLang: (l: Lang) 
     finally { setBusy(false); }
   };
 
+  const FEATURES: Array<[Key, Key, string]> = [
+    ["land.f1", "land.f1t", "M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"],
+    ["land.f2", "land.f2t", "M5 20V10M10 20V4M15 20v-7M20 20v-11"],
+    ["land.f3", "land.f3t", "M13 2L4 14h7l-1 8 9-12h-7l1-8z"],
+    ["land.f4", "land.f4t", "M12 3l8 3v6c0 5-3.4 8.3-8 9-4.6-.7-8-4-8-9V6l8-3zM9 12l2 2 4-4"],
+  ];
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-10">
+    <div className="grid min-h-full lg:grid-cols-[1.1fr_1fr]">
+      {/* Brand side */}
+      <div className="relative hidden overflow-hidden border-r border-line lg:flex lg:flex-col lg:justify-center lg:px-14 xl:px-20">
+        <div className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-violet/20 blur-[120px]" />
+        <div className="pointer-events-none absolute -bottom-40 -left-20 h-[420px] w-[420px] rounded-full bg-accent/15 blur-[120px]" />
+        <img src={`${import.meta.env.BASE_URL}emblem.jpg`} alt="VECTOR — Crypto Trading Terminal" className="relative mx-auto w-full max-w-[380px] rounded-full shadow-[0_0_80px_-10px_rgba(139,92,246,0.55)]" />
+        <div className="relative mx-auto mt-12 w-full max-w-md space-y-5">
+          {FEATURES.map(([h, d, icon]) => (
+            <div key={h} className="flex items-center gap-4">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-line bg-gradient-to-br from-accent/20 to-violet/25">
+                <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#a5b4fc]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+              </span>
+              <span><span className="block font-display text-base font-semibold">{t(h)}</span><span className="block text-sm text-muted">{t(d)}</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Form side */}
+      <div className="flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xl font-bold tracking-[0.2em] text-accent">
-            <svg viewBox="0 0 32 32" className="h-7 w-7"><path d="M7 9l9 15 9-15" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            VEKTOR
-          </div>
+        <div className="mb-10 flex items-center justify-between">
+          <Wordmark sub />
           <div className="flex gap-1 text-sm">
             {(["ru", "en"] as const).map((l) => (
               <button key={l} onClick={() => onLang(l)} className={`rounded-md px-2 py-1 ${l === lang ? "bg-panel-2 text-text" : "text-muted"}`}>{l.toUpperCase()}</button>
             ))}
           </div>
         </div>
-        <h1 className="text-2xl font-semibold">{t("login.title")}</h1>
+        <h1 className="font-display text-3xl font-semibold">{t("login.title")}</h1>
 
         {step === "totp" ? (
           <form className="mt-6 space-y-4" onSubmit={async (e) => {
@@ -108,6 +131,7 @@ export function Login({ lang, onLang, onDone }: { lang: Lang; onLang: (l: Lang) 
             </div>
           </form>
         )}
+      </div>
       </div>
     </div>
   );

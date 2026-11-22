@@ -60,7 +60,7 @@ export async function notify(userId: number, kind: Kind, msg: Msg): Promise<bool
   if (kind === "test") return delivered;
   const wants = (m: ChannelMode | null, def: ChannelMode) => { const mode = m ?? def; return mode === "all" || (mode === "critical" && critical); };
   const [title, ...rest] = text.split("\n");
-  if (wants(r.email_mode, "critical")) void sendMail(r.email, `Vektor: ${title}`, text).catch(() => undefined);
+  if (wants(r.email_mode, "critical")) void sendMail(r.email, `VECTOR: ${title}`, text).catch(() => undefined);
   if (wants(r.push_mode, "all")) void sendPush(userId, title, rest.join("\n") || title).catch(() => undefined);
   return delivered;
 }

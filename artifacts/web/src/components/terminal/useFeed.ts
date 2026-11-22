@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Candle } from "./Chart";
 
 export type Book = { bids: number[][]; asks: number[][]; at: number };
-export type Tick = { last: number | null; bid: number | null; ask: number | null; at: number; receivedAt: number };
+export type Tick = { last: number | null; bid: number | null; ask: number | null; at: number; receivedAt: number; high?: number | null; low?: number | null; change24h?: number | null; quoteVolume?: number | null; baseVolume?: number | null };
 
 /** Live candle, ticker and order book over server-sent events. */
 export function useFeed(accountId: number | null, symbol: string | null, tf: string) {

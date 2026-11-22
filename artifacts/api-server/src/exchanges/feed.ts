@@ -1,5 +1,5 @@
 import type { Env, Market } from "./client";
-import { candles, orderBook, proClient, publicClient, ticker, type Candle, type Timeframe } from "./market";
+import { candles, orderBook, proClient, publicClient, ticker, tickerView, type Candle, type Timeframe } from "./market";
 
 /**
  * One live feed per (exchange, market, env, symbol, timeframe), shared by every viewer.
@@ -8,7 +8,7 @@ import { candles, orderBook, proClient, publicClient, ticker, type Candle, type 
  */
 export type FeedEvent =
   | { type: "candle"; candle: Candle }
-  | { type: "ticker"; last: number | null; bid: number | null; ask: number | null; at: number }
+  | { type: "ticker"; last: number | null; bid: number | null; ask: number | null; at: number; high?: number | null; low?: number | null; change24h?: number | null; quoteVolume?: number | null; baseVolume?: number | null }
   | { type: "book"; bids: number[][]; asks: number[][]; at: number }
   | { type: "source"; mode: "ws" | "poll" }
   | { type: "error"; message: string };
@@ -36,7 +36,7 @@ class Feed {
       });
       void this.loop(async () => {
         const t = await pro.watchTicker(this.symbol);
-        this.emit({ type: "ticker", last: t.last ?? null, bid: t.bid ?? null, ask: t.ask ?? null, at: t.timestamp ?? Date.now() });
+        this.emit({ type: "ticker", ...tickerView(t) });
       });
       if (pro.has?.watchOrderBook) {
         let lastBook = 0;
@@ -53,7 +53,7 @@ class Feed {
         const [rows, t] = await Promise.all([candles(this.ex, this.m, this.env, this.symbol, this.tf, 2), ticker(this.ex, this.m, this.env, this.symbol)]);
         const last = rows[rows.length - 1];
         if (last) this.emit({ type: "candle", candle: last });
-        this.emit({ type: "ticker", last: t.last, bid: t.bid, ask: t.ask, at: t.at });
+        this.emit({ type: "ticker", ...t });
         await sleep(POLL_MS);
       });
       this.pollBook();

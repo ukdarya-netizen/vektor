@@ -97,7 +97,7 @@ botsRouter.post("/bots/:id/token", async (req, res) => {
   res.json({ token });
 });
 
-/** Code to post once in a Telegram channel/group where the Vektor bot is added. */
+/** Code to post once in a Telegram channel/group where the VECTOR bot is added. */
 botsRouter.post("/bots/:id/telegram-link", async (req, res) => {
   const user = userOf(req);
   const bot = await one("SELECT id FROM vk_bots WHERE id = $1 AND user_id = $2", [Number(req.params.id), user.id]);

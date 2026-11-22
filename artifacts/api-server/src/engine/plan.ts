@@ -78,7 +78,7 @@ export function trailingStop(o: { side: Side; entry: number; best: number; curre
   return cand;
 }
 
-/** Price crossed the stop (for stops Vektor keeps itself when the exchange has no stop orders). */
+/** Price crossed the stop (for stops VECTOR keeps itself when the exchange has no stop orders). */
 export const stopCrossed = (side: Side, stop: number, price: number) => (side === "long" ? price <= stop : price >= stop);
 
 /**

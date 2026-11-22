@@ -23,7 +23,7 @@ export function SettingsPage({ user, onUserChange }: { user: User; onUserChange:
   const [, params] = useRoute("/settings/:tab");
   const tab = params?.tab ?? "exchanges";
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <div className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
         {TABS.map((x) => (
           <Link key={x.id} href={`/settings/${x.id}`}

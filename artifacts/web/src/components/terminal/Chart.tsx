@@ -17,8 +17,11 @@ export type Drawing =
   | { id: string; type: "text"; a: Pt; text: string };
 export type Tool = "cursor" | "hline" | "vline" | "trend" | "ray" | "rect" | "fib" | "text" | "measure";
 
-const UP = "#22c58b";
-const DOWN = "#f0525f";
+// Brand candles: blue up, violet down (as in the VECTOR design).
+const UP = "#3b82f6";
+const DOWN = "#8b5cf6";
+const VOL_UP = "rgba(59,130,246,0.38)";
+const VOL_DOWN = "rgba(139,92,246,0.38)";
 const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -52,13 +55,13 @@ export function Chart(p: Props) {
     if (!box.current) return;
     const c = createChart(box.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#8b95a7", fontFamily: "Inter, system-ui, sans-serif", panes: { separatorColor: "#232c3d" } },
-      grid: { vertLines: { color: "#1a2130" }, horzLines: { color: "#1a2130" } },
-      rightPriceScale: { borderColor: "#232c3d" },
-      timeScale: { borderColor: "#232c3d", timeVisible: true, secondsVisible: false, rightOffset: 8 },
-      crosshair: { mode: 0 },
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#8a94a8", fontFamily: "'JetBrains Mono Variable', ui-monospace, monospace", fontSize: 11, panes: { separatorColor: "#1e293b" }, attributionLogo: false },
+      grid: { vertLines: { color: "rgba(30,41,59,0.55)" }, horzLines: { color: "rgba(30,41,59,0.55)" } },
+      rightPriceScale: { borderColor: "#1e293b" },
+      timeScale: { borderColor: "#1e293b", timeVisible: true, secondsVisible: false, rightOffset: 8 },
+      crosshair: { mode: 0, vertLine: { color: "#475569", labelBackgroundColor: "#1e293b" }, horzLine: { color: "#475569", labelBackgroundColor: "#1e293b" } },
     });
-    cs.current = c.addSeries(CandlestickSeries, { upColor: UP, downColor: DOWN, borderVisible: false, wickUpColor: UP, wickDownColor: DOWN });
+    cs.current = c.addSeries(CandlestickSeries, { upColor: UP, downColor: DOWN, borderVisible: false, wickUpColor: UP, wickDownColor: DOWN, priceLineColor: "#8b5cf6" });
     vs.current = c.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol", lastValueVisible: false, priceLineVisible: false });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     chart.current = c;
@@ -71,7 +74,7 @@ export function Chart(p: Props) {
     if (!cs.current || !vs.current) return;
     const rows = p.candles ?? [];
     cs.current.setData(rows.map((r) => ({ time: (r[0] / 1000) as UTCTimestamp, open: r[1], high: r[2], low: r[3], close: r[4] })));
-    vs.current.setData(rows.map((r) => ({ time: (r[0] / 1000) as UTCTimestamp, value: r[5], color: r[4] >= r[1] ? "rgba(34,197,139,0.35)" : "rgba(240,82,95,0.35)" })));
+    vs.current.setData(rows.map((r) => ({ time: (r[0] / 1000) as UTCTimestamp, value: r[5], color: r[4] >= r[1] ? VOL_UP : VOL_DOWN })));
     chart.current?.timeScale().fitContent();
   }, [p.candles]);
 
@@ -81,7 +84,7 @@ export function Chart(p: Props) {
     const time = (live[0] / 1000) as UTCTimestamp;
     try {
       cs.current.update({ time, open: live[1], high: live[2], low: live[3], close: live[4] });
-      vs.current.update({ time, value: live[5], color: live[4] >= live[1] ? "rgba(34,197,139,0.35)" : "rgba(240,82,95,0.35)" });
+      vs.current.update({ time, value: live[5], color: live[4] >= live[1] ? VOL_UP : VOL_DOWN });
     } catch { /* out-of-order tick */ }
   }, [p.live, p.candles]);
 

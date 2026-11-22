@@ -1,5 +1,5 @@
 /**
- * Login-code email. Provider: Resend (RESEND_API_KEY + MAIL_FROM, e.g. "Vektor <login@yourdomain.com>").
+ * Login-code email. Provider: Resend (RESEND_API_KEY + MAIL_FROM, e.g. "VECTOR <login@yourdomain.com>").
  * Without a key in development the code is printed to the server log; in production sending fails
  * closed (the user sees "не удалось отправить письмо").
  */
@@ -7,14 +7,14 @@ type Lang = "ru" | "en";
 
 const TEXT = {
   ru: {
-    subject: (code: string) => `${code} — код входа в Vektor`,
+    subject: (code: string) => `${code} — код входа в VECTOR`,
     body: (code: string) =>
-      `Ваш код входа в Vektor:\n\n${code}\n\nКод действует 10 минут.\nЕсли вы не запрашивали вход — просто проигнорируйте это письмо.`,
+      `Ваш код входа в VECTOR:\n\n${code}\n\nКод действует 10 минут.\nЕсли вы не запрашивали вход — просто проигнорируйте это письмо.`,
   },
   en: {
-    subject: (code: string) => `${code} — your Vektor sign-in code`,
+    subject: (code: string) => `${code} — your VECTOR sign-in code`,
     body: (code: string) =>
-      `Your Vektor sign-in code:\n\n${code}\n\nThe code is valid for 10 minutes.\nIf you didn't request it, just ignore this email.`,
+      `Your VECTOR sign-in code:\n\n${code}\n\nThe code is valid for 10 minutes.\nIf you didn't request it, just ignore this email.`,
   },
 };
 

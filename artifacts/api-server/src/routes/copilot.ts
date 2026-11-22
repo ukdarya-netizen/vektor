@@ -55,7 +55,7 @@ export const TOOLS = [
   },
 ];
 
-const SYSTEM = (lang: string, ctx: string) => `You are the copilot of the Vektor crypto trading terminal. Turn the user's message into exactly ONE tool call.
+const SYSTEM = (lang: string, ctx: string) => `You are the copilot of the VECTOR crypto trading terminal. Turn the user's message into exactly ONE tool call.
 Rules:
 - Never invent a position size, a coin or an account. If the size is missing, call "answer" and ask for it.
 - If several accounts fit and the user did not say which, use the one marked "selected"; if none is selected, ask.

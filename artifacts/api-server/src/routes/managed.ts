@@ -63,7 +63,7 @@ managedRouter.patch("/:id", async (req, res) => {
   res.json({ position: row });
 });
 
-/** Stop managing: Vektor's take orders are cancelled; the stop stays on the exchange unless asked. */
+/** Stop managing: VECTOR's take orders are cancelled; the stop stays on the exchange unless asked. */
 managedRouter.delete("/:id", async (req, res) => {
   const user = userOf(req);
   const p = await one("SELECT * FROM vk_positions WHERE id = $1 AND user_id = $2 AND status <> 'closed'", [Number(req.params.id), user.id]);

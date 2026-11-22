@@ -92,5 +92,31 @@ export async function orderBook(ex: string, m: Market, env: Env, symbol: string,
 
 export async function ticker(ex: string, m: Market, env: Env, symbol: string) {
   const t = await publicClient(ex, m, env).fetchTicker(symbol);
-  return { last: t.last ?? t.close ?? null, bid: t.bid ?? null, ask: t.ask ?? null, change24h: t.percentage ?? null, at: t.timestamp ?? Date.now() };
+  return tickerView(t);
+}
+
+export const tickerView = (t: any) => ({
+  last: t.last ?? t.close ?? null, bid: t.bid ?? null, ask: t.ask ?? null, change24h: t.percentage ?? null,
+  high: t.high ?? null, low: t.low ?? null, baseVolume: t.baseVolume ?? null, quoteVolume: t.quoteVolume ?? null, at: t.timestamp ?? Date.now(),
+});
+
+const tickersCache = new Map<string, { at: number; data: Promise<any[]> }>();
+/** All USDT markets of the exchange with price and 24h change, biggest volume first (for the markets list). */
+export function allTickers(ex: string, m: Market, env: Env): Promise<Array<{ symbol: string; base: string; last: number | null; change24h: number | null; quoteVolume: number | null }>> {
+  const k = `${ex}:${m}:${env === "paper" ? "live" : env}`;
+  const c = tickersCache.get(k);
+  if (c && Date.now() - c.at < 15_000) return c.data;
+  const data = (async () => {
+    const pc = publicClient(ex, m, env);
+    const list = await markets(ex, m, env);
+    const want = new Set(list.map((x) => x.symbol));
+    const ts: Record<string, any> = pc.has?.fetchTickers ? await pc.fetchTickers() : {};
+    return list.map((x) => {
+      const t = ts[x.symbol] ?? null;
+      return { symbol: x.symbol, base: x.base, last: t?.last ?? null, change24h: t?.percentage ?? null, quoteVolume: t?.quoteVolume ?? (t?.baseVolume && t?.last ? t.baseVolume * t.last : null) };
+    }).filter((x) => want.has(x.symbol)).sort((a, b) => (b.quoteVolume ?? 0) - (a.quoteVolume ?? 0));
+  })();
+  tickersCache.set(k, { at: Date.now(), data });
+  data.catch(() => tickersCache.delete(k));
+  return data;
 }

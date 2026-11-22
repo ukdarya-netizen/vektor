@@ -182,11 +182,11 @@ export const T = {
       `⚠️ ${label}: ${w.en}.\nNo new trades on this account until the connection is back.`);
   },
   exchangeRestored: (label: string): Msg => both(`✅ ${label}: связь с биржей восстановлена.`, `✅ ${label}: exchange connection restored.`),
-  linked: (email: string): Msg => both(`✅ Telegram подключён к аккаунту Vektor ${email}.\n\nСюда будут приходить уведомления о сделках. Настроить, какие именно, — в Настройки → Уведомления.`,
-    `✅ Telegram is connected to the Vektor account ${email}.\n\nTrade notifications will come here. Choose which ones in Settings → Notifications.`),
-  unlinked: both("Telegram отключён от аккаунта Vektor. Уведомления больше не приходят.", "Telegram is disconnected from the Vektor account. No more notifications."),
-  startNoToken: both("👋 Это бот уведомлений Vektor.\n\nЧтобы подключить его, откройте в терминале Настройки → Уведомления → «Подключить Telegram».",
-    "👋 This is the Vektor notification bot.\n\nTo connect it, open Settings → Notifications → “Connect Telegram” in the terminal."),
+  linked: (email: string): Msg => both(`✅ Telegram подключён к аккаунту VECTOR ${email}.\n\nСюда будут приходить уведомления о сделках. Настроить, какие именно, — в Настройки → Уведомления.`,
+    `✅ Telegram is connected to the VECTOR account ${email}.\n\nTrade notifications will come here. Choose which ones in Settings → Notifications.`),
+  unlinked: both("Telegram отключён от аккаунта VECTOR. Уведомления больше не приходят.", "Telegram is disconnected from the VECTOR account. No more notifications."),
+  startNoToken: both("👋 Это бот уведомлений VECTOR.\n\nЧтобы подключить его, откройте в терминале Настройки → Уведомления → «Подключить Telegram».",
+    "👋 This is the VECTOR notification bot.\n\nTo connect it, open Settings → Notifications → “Connect Telegram” in the terminal."),
   linkExpired: both("Ссылка устарела. Нажмите «Подключить Telegram» в терминале ещё раз.", "The link has expired. Press “Connect Telegram” in the terminal again."),
-  test: both("🔔 Тестовое уведомление Vektor. Если вы это видите — всё работает.", "🔔 Vektor test notification. If you see this, it works."),
+  test: both("🔔 Тестовое уведомление VECTOR. Если вы это видите — всё работает.", "🔔 VECTOR test notification. If you see this, it works."),
 };

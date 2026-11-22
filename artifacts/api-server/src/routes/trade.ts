@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { one } from "../db";
 import { clientFor, exchangeError, type AccountRow } from "../exchanges/client";
-import { candles, orderBook, TIMEFRAMES } from "../exchanges/market";
+import { allTickers, candles, orderBook, TIMEFRAMES } from "../exchanges/market";
 import { closePosition, evaluate, marketsCached, openEntry } from "../exchanges/execute";
 import { subscribe } from "../exchanges/feed";
 import { snapshot, STABLES } from "../exchanges/snapshot";
@@ -25,6 +25,12 @@ tradeRouter.get("/markets", async (req, res) => {
   const a = await account(req, res, req.query.accountId);
   if (!a) return;
   try { res.json({ markets: await marketsCached(a) }); } catch (e) { fail(res, e); }
+});
+
+tradeRouter.get("/tickers", async (req, res) => {
+  const a = await account(req, res, req.query.accountId);
+  if (!a) return;
+  try { res.json({ tickers: await allTickers(a.exchange, a.market, a.env) }); } catch (e) { fail(res, e); }
 });
 
 tradeRouter.get("/candles", async (req, res) => {
