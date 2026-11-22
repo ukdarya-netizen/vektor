@@ -6,6 +6,7 @@ import { accountsRouter, checkAccount } from "./routes/accounts";
 import { notificationsRouter } from "./routes/notifications";
 import { tradeRouter } from "./routes/trade";
 import { managedRouter } from "./routes/managed";
+import { botsRouter, hookRouter } from "./routes/bots";
 import { startEngine } from "./engine/manager";
 import { clientFor } from "./exchanges/client";
 import { pump } from "./telegram/outbox";
@@ -24,11 +25,13 @@ app.use(express.json({ limit: "256kb" }));
 app.use(cookieParser());
 
 app.get("/api/healthz", (_req, res) => { res.json({ ok: true }); });
+app.use("/api/hook", hookRouter); // public webhook — before any signed-in router
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/managed", managedRouter);
 app.use("/api", accountsRouter);
 app.use("/api", tradeRouter);
+app.use("/api", botsRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error("[api]", err);

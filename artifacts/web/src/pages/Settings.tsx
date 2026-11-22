@@ -11,6 +11,7 @@ import { TelegramConnect, useNotif } from "@/components/TelegramConnect";
 const TABS: Array<{ id: string; key: Key }> = [
   { id: "exchanges", key: "settings.exchanges" },
   { id: "notifications", key: "settings.notifications" },
+  { id: "risk", key: "settings.risk" },
   { id: "security", key: "settings.security" },
   { id: "language", key: "settings.language" },
 ];
@@ -31,6 +32,7 @@ export function SettingsPage({ user, onUserChange }: { user: User; onUserChange:
       </div>
       {tab === "exchanges" && <Exchanges />}
       {tab === "notifications" && <Notifications />}
+      {tab === "risk" && <Risk />}
       {tab === "security" && <Security />}
       {tab === "language" && <Language user={user} onChange={onUserChange} />}
     </div>
@@ -196,5 +198,46 @@ function Language({ user, onChange }: { user: User; onChange: () => void }) {
         </select>
       </div>
     </Card>
+  );
+}
+
+type Limits = { killSwitch: boolean; maxLeverage: number | null; maxMarginPerTrade: number | null; maxOpenPositions: number | null; dailyLossLimit: number | null };
+
+function Risk() {
+  const t = useT();
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["risk"], queryFn: () => api<{ limits: Limits }>("/risk") });
+  const [saved, setSaved] = useState(false);
+  if (!data) return <div className="py-10 text-center text-muted"><Spinner /></div>;
+  const l = data.limits;
+  const save = async (patch: Partial<Limits>) => {
+    await api("/risk", { method: "PUT", body: { ...l, ...patch } });
+    await qc.invalidateQueries({ queryKey: ["risk"] });
+    setSaved(true); setTimeout(() => setSaved(false), 1500);
+  };
+  const Field = ({ k, label, hint, int }: { k: keyof Omit<Limits, "killSwitch">; label: string; hint?: string; int?: boolean }) => (
+    <label className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+      <span>{label}{hint && <span className="mt-0.5 block text-xs text-muted">{hint}</span>}</span>
+      <input inputMode="decimal" placeholder={t("risk.none")} defaultValue={l[k] ?? ""} key={String(l[k])}
+        onBlur={(e) => { const v = e.target.value.trim() === "" ? null : Number(e.target.value.replace(",", ".")); if (v === null || v > 0) void save({ [k]: v === null ? null : int ? Math.round(v) : v } as Partial<Limits>); }}
+        className="h-9 w-36 rounded-lg border border-line bg-bg px-3 text-right outline-none focus:border-accent" />
+    </label>
+  );
+  return (
+    <div className="space-y-4">
+      <Card className={cx("p-4", l.killSwitch && "border-down/50")}>
+        <div className="flex items-center justify-between gap-4">
+          <div><div className="font-medium">{t("risk.kill")}</div><div className="mt-1 text-sm text-muted">{t("risk.killHint")}</div></div>
+          <Switch checked={l.killSwitch} onChange={(v) => save({ killSwitch: v })} />
+        </div>
+      </Card>
+      <Card className="divide-y divide-line px-4">
+        <Field k="maxLeverage" label={t("risk.maxLeverage")} int />
+        <Field k="maxMarginPerTrade" label={t("risk.maxMargin")} />
+        <Field k="maxOpenPositions" label={t("risk.maxPositions")} int />
+        <Field k="dailyLossLimit" label={t("risk.dailyLoss")} hint={t("risk.dailyHint")} />
+      </Card>
+      {saved && <div className="text-sm text-up">{t("risk.saved")}</div>}
+    </div>
   );
 }

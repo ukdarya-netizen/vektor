@@ -192,4 +192,56 @@ export const MIGRATIONS: Array<{ id: number; name: string; sql: string }> = [
     name: "plan edits are applied by the engine",
     sql: `ALTER TABLE vk_positions ADD COLUMN IF NOT EXISTS resync boolean NOT NULL DEFAULT false;`,
   },
+  {
+    id: 7,
+    name: "templates, signal bots, signals, risk limits, DCA orders",
+    sql: `
+      CREATE TABLE IF NOT EXISTS vk_templates (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        sizing jsonb NOT NULL,
+        plan jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS vk_bots (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        account_id bigint NOT NULL REFERENCES vk_exchange_accounts(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        token_hash text NOT NULL UNIQUE,
+        token_hint text NOT NULL,
+        settings jsonb NOT NULL,
+        enabled boolean NOT NULL DEFAULT true,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS vk_signals (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL REFERENCES vk_users(id) ON DELETE CASCADE,
+        bot_id bigint NOT NULL REFERENCES vk_bots(id) ON DELETE CASCADE,
+        dedup_key text NOT NULL,
+        raw text NOT NULL,
+        parsed jsonb,
+        status text NOT NULL,
+        reason text,
+        detail jsonb,
+        position_id bigint,
+        test boolean NOT NULL DEFAULT false,
+        received_at timestamptz NOT NULL DEFAULT now(),
+        done_at timestamptz,
+        UNIQUE (bot_id, dedup_key)
+      );
+      CREATE INDEX IF NOT EXISTS vk_signals_user ON vk_signals (user_id, id DESC);
+      CREATE TABLE IF NOT EXISTS vk_risk (
+        user_id bigint PRIMARY KEY REFERENCES vk_users(id) ON DELETE CASCADE,
+        kill_switch boolean NOT NULL DEFAULT false,
+        max_leverage int,
+        max_margin_per_trade numeric,
+        max_open_positions int,
+        daily_loss_limit numeric,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      ALTER TABLE vk_positions ADD COLUMN IF NOT EXISTS dca jsonb NOT NULL DEFAULT '[]'::jsonb;
+    `,
+  },
 ];

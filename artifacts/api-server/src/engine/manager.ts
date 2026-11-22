@@ -17,7 +17,7 @@ import type { Side } from "../exchanges/preflight";
 import { notify, type Kind } from "../telegram/notify";
 import { closeLine, head, resultLine, stopCloseKey, stopMoveLine, T, type Msg, type StopKind } from "../telegram/texts";
 import {
-  breakevenPrice, isBetterStop, liqBeforeStop, marginForStop, movePct, planErrors, planSchema, stopCrossed, stopPrice,
+  dcaLevels, breakevenPrice, isBetterStop, liqBeforeStop, marginForStop, movePct, planErrors, planSchema, stopCrossed, stopPrice,
   takeLevels, takeQuantities, trailingStop, type Plan,
 } from "./plan";
 
@@ -35,6 +35,7 @@ export type PosRow = {
   takes: Array<{ n: number; price: number; qty: number; orderId: string | null; filled: number; state: "open" | "filled" | "cancelled" | "failed" }>;
   best_price: number | null; be_done: boolean; trail_notified_at: Date | null; pending_close_reason: string | null;
   realized_pnl: number; opened_at: Date | null; created_at: Date; resync: boolean;
+  dca: Array<{ n: number; price: number; qty: number; orderId: string | null; state: "open" | "filled" | "cancelled" | "failed" }>;
 };
 
 const NUMERIC = ["entry_price", "initial_qty", "qty", "stop_price", "best_price", "realized_pnl"] as const;
@@ -42,6 +43,7 @@ function parseRow(r: any): PosRow {
   for (const k of NUMERIC) r[k] = r[k] === null || r[k] === undefined ? null : Number(r[k]);
   r.realized_pnl = r.realized_pnl ?? 0;
   r.plan = planSchema.parse(r.plan);
+  r.dca = r.dca ?? [];
   return r as PosRow;
 }
 
@@ -123,6 +125,7 @@ export function createManager(deps: Deps) {
     if (sp !== null) await placeStop(c, px(ex, p.symbol, sp), "initial");
     if (isClosed(p)) return; // protection failed → closed
     await placeTakes(c, entry, qty);
+    await placeDca(c, entry, qty);
     await guardLiquidation(c);
     if (isClosed(p)) return;
 
@@ -185,6 +188,29 @@ export function createManager(deps: Deps) {
     await update(p, { takes });
   }
 
+  async function placeDca(c: Ctx, entry: number, baseQty: number) {
+    const { p, ex, a } = c;
+    const levels = dcaLevels(p.plan, p.side, entry, baseQty);
+    if (!levels.length) return;
+    const dca: PosRow["dca"] = [];
+    for (const l of levels) {
+      const qty = amt(ex, p.symbol, l.qty);
+      const price = px(ex, p.symbol, l.price);
+      try {
+        const o = await ex.createOrder(p.symbol, "limit", orderSide(p.side, false), qty, price, modeParams(a.exchange, c.hedged, p.side, false));
+        dca.push({ n: l.n, price, qty, orderId: String(o.id), state: "open" });
+      } catch (e) {
+        dca.push({ n: l.n, price, qty, orderId: null, state: "failed" });
+        await event(p, "dca_failed", { n: l.n, price, error: exchangeError(e) });
+      }
+    }
+    await update(p, { dca });
+  }
+
+  async function cancelDca(c: Ctx) {
+    for (const d of c.p.dca ?? []) if (d.state === "open" && d.orderId) await c.ex.cancelOrder(d.orderId, c.p.symbol).catch(() => undefined);
+  }
+
   async function cancelTakes(c: Ctx) {
     for (const t of c.p.takes) if (t.state === "open" && t.orderId) await c.ex.cancelOrder(t.orderId, c.p.symbol).catch(() => undefined);
   }
@@ -220,6 +246,7 @@ export function createManager(deps: Deps) {
     const { p, ex, a } = c;
     await update(p, { pending_close_reason: reason });
     await cancelTakes(c);
+    await cancelDca(c);
     if (p.stop_order_id) await ex.cancelOrder(p.stop_order_id, p.symbol, triggerParams(ex)).catch(() => undefined);
     const qty = p.qty ?? contracts(c.pos);
     try {
@@ -245,6 +272,17 @@ export function createManager(deps: Deps) {
       // Added to the position (by hand or DCA): new average, re-place protection for the new size.
       await update(p, { qty: size, entry_price: Number(pos.entryPrice) });
       await event(p, "size_increased", { qty: size, entry: p.entry_price });
+      const dca = (p.dca ?? []).map((d) => ({ ...d }));
+      const hit: number[] = [];
+      for (const d of dca) {
+        if (d.state !== "open" || !d.orderId) continue;
+        const o = await ex.fetchOrder(d.orderId, p.symbol).catch(() => null);
+        if (o && Number(o.filled) > 0 && (o.status === "closed" || Number(o.filled) >= d.qty - EPS)) { d.state = "filled"; hit.push(d.n); }
+      }
+      if (hit.length) {
+        await update(p, { dca });
+        await say(p.user_id, "partial", T.dcaFilled(c.h, hit, p.entry_price!, size * Number(market(ex, p.symbol)?.contractSize ?? 1)));
+      }
       await cancelTakes(c);
       if (p.stop_price !== null) await placeStop(c, p.stop_price, p.stop_kind ?? "initial", "size_changed");
       if (!isClosed(p)) await placeTakes(c, p.entry_price!, size);
@@ -383,6 +421,7 @@ export function createManager(deps: Deps) {
       if (pos) return;
     }
     await cancelTakes(c);
+    await cancelDca(c);
     if (p.stop_order_id) await ex.cancelOrder(p.stop_order_id, p.symbol, triggerParams(ex)).catch(() => undefined);
     const since = (p.opened_at ? new Date(p.opened_at).getTime() : p.created_at.getTime()) - 2_000;
     const trades: any[] = await ex.fetchMyTrades(p.symbol, since).catch(() => []);

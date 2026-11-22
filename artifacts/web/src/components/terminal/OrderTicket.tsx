@@ -36,6 +36,19 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
   const [plan, setPlan] = useState<Plan>(() => { try { return JSON.parse(localStorage.getItem(`vk_plan_${account.id}`) ?? "") as Plan; } catch { return DEFAULT_PLAN; } });
   useEffect(() => { try { localStorage.setItem(`vk_plan_${account.id}`, JSON.stringify(plan)); localStorage.setItem(`vk_planon_${account.id}`, planOn ? "1" : "0"); } catch { /* ignore */ } }, [plan, planOn, account.id]);
 
+  const tpls = useQuery({ queryKey: ["templates"], queryFn: () => api<{ templates: Array<{ id: number; name: string; sizing: { amountMode: "usdt" | "percent"; amount: number; leverage: number; marginMode: "isolated" | "cross" }; plan: Plan }> }>("/templates"), enabled: futures });
+  const applyTemplate = (id: number) => {
+    const x = tpls.data?.templates.find((y) => y.id === id);
+    if (!x) return;
+    setMode(x.sizing.amountMode); setAmount(String(x.sizing.amount)); setLev(x.sizing.leverage); setMarginMode(x.sizing.marginMode);
+    setPlan(x.plan); setPlanOn(true);
+  };
+  const saveTemplate = async () => {
+    const name = prompt(t("tpl.name"));
+    if (!name?.trim()) return;
+    await api("/templates", { body: { name: name.trim(), sizing: { amountMode: mode, amount: Number(amount) || 10, leverage: lev, marginMode }, plan } });
+    void qc.invalidateQueries({ queryKey: ["templates"] });
+  };
   const bal = useQuery({
     queryKey: ["balance", account.id, mkt?.base],
     queryFn: () => api<{ quoteFree: number; baseFree: number | null }>(`/balance?accountId=${account.id}${mkt ? `&base=${mkt.base}` : ""}`),
@@ -86,6 +99,7 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
         else if (e.code === "leverage_failed") setResult({ tone: "down", text: t("pf.leverage_failed", { msg: e.body?.exchangeError?.message ?? "" }) });
         else if (e.code === "account_paused") setResult({ tone: "down", text: t("pf.account_paused") });
         else if (e.code === "plan_invalid") setResult({ tone: "down", text: t(`plan.${e.body?.reason}` as Key) });
+        else if (e.code === "risk_limit") setResult({ tone: "down", text: t(`pf.risk.${e.body?.risk?.code}` as Key, { limit: e.body?.risk?.limit ?? "" }) });
         else setResult({ tone: "down", text: e.body?.exchangeError?.message ?? t("err.generic") });
         if (e.body?.order?.status !== "unknown") setRequestId(uid());
       } else setResult({ tone: "down", text: t("err.generic") });
@@ -109,6 +123,17 @@ export function OrderTicket({ account, mkt, tick }: { account: Account; mkt: Mkt
           </button>
         ))}
       </div>
+
+      {futures && (
+        <div className="flex items-center gap-2">
+          <select className="h-8 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 text-xs" value="" aria-label={t("tpl.title")}
+            onChange={(e) => e.target.value && applyTemplate(Number(e.target.value))}>
+            <option value="">{t("tpl.title")}: {t("tpl.none")}</option>
+            {tpls.data?.templates.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+          <button className="shrink-0 text-xs text-accent hover:underline" onClick={saveTemplate}>{t("tpl.save")}</button>
+        </div>
+      )}
 
       <div className="flex gap-4 text-sm">
         {(["market", "limit"] as const).map((x) => (

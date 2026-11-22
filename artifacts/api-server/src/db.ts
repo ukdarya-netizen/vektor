@@ -3,6 +3,9 @@ import { MIGRATIONS } from "./migrations";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL must be set");
 
+// bigint (ids, counts) as JS numbers — ids never reach 2^53; numeric (money) stays a string.
+pg.types.setTypeParser(20, (v) => Number(v));
+
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
 
 export async function q<T extends pg.QueryResultRow = any>(sql: string, params: unknown[] = []): Promise<T[]> {

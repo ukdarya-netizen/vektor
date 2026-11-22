@@ -1,14 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
-import { one, q } from "../db";
+import { one } from "../db";
 import { clientFor, exchangeError, type AccountRow } from "../exchanges/client";
-import { candles, markets, orderBook, ticker, TIMEFRAMES, type MarketInfo } from "../exchanges/market";
+import { candles, orderBook, TIMEFRAMES } from "../exchanges/market";
+import { closePosition, evaluate, marketsCached, openEntry } from "../exchanges/execute";
 import { subscribe } from "../exchanges/feed";
-import { preflight, type OrderInput } from "../exchanges/preflight";
-import { isHedged, modeParams, orderSide } from "../exchanges/positionMode";
 import { snapshot, STABLES } from "../exchanges/snapshot";
 import { requireUser, userOf } from "./auth";
-import { planErrors, planSchema } from "../engine/plan";
+import { planSchema } from "../engine/plan";
 
 export const tradeRouter = Router();
 tradeRouter.use(requireUser);
@@ -17,20 +16,6 @@ async function account(req: Request<any>, res: Response, id: unknown): Promise<(
   const a = await one<AccountRow & { status: string }>("SELECT * FROM vk_exchange_accounts WHERE id = $1 AND user_id = $2", [Number(id), userOf(req).id]);
   if (!a) res.status(404).json({ error: "account_not_found" });
   return a;
-}
-
-const marketCache = new Map<string, { at: number; list: Promise<MarketInfo[]> }>();
-function marketsCached(a: AccountRow): Promise<MarketInfo[]> {
-  const k = `${a.exchange}:${a.market}:${a.env}`;
-  const c = marketCache.get(k);
-  if (c && Date.now() - c.at < 30 * 60_000) return c.list;
-  const list = markets(a.exchange, a.market, a.env);
-  marketCache.set(k, { at: Date.now(), list });
-  list.catch(() => marketCache.delete(k));
-  return list;
-}
-async function marketOf(a: AccountRow, symbol: string): Promise<MarketInfo | null> {
-  return (await marketsCached(a)).find((m) => m.symbol === symbol) ?? null;
 }
 
 const fail = (res: Response, e: unknown) => res.status(502).json({ error: "exchange_error", exchangeError: exchangeError(e) });
@@ -89,17 +74,6 @@ const orderSchema = z.object({
   plan: planSchema.nullable().optional(),
 });
 
-async function evaluate(a: AccountRow, b: z.infer<typeof orderSchema>) {
-  const mk = await marketOf(a, b.symbol);
-  if (!mk) return { mk: null, pf: null };
-  const [t, snap] = await Promise.all([ticker(a.exchange, a.market, a.env, b.symbol), snapshot(a, true)]);
-  if (snap.error) throw Object.assign(new Error(snap.error.message), { exchangeCode: snap.error.code });
-  const quote = snap.balances.find((x) => x.asset === mk.quote);
-  const base = snap.balances.find((x) => x.asset === mk.base);
-  const input: OrderInput = { market: a.market, side: b.side, type: b.type, price: b.price ?? null, amountMode: b.amountMode, amount: b.amount, leverage: b.leverage ?? 1 };
-  return { mk, pf: preflight(input, mk, { last: t.last, bid: t.bid, ask: t.ask, freeQuote: quote?.free ?? 0, baseFree: base?.free ?? 0 }) };
-}
-
 /** Preview: exactly what would be sent and why not, without sending anything. */
 tradeRouter.post("/orders/preview", async (req, res) => {
   const b = orderSchema.partial({ clientRequestId: true }).safeParse(req.body);
@@ -107,7 +81,7 @@ tradeRouter.post("/orders/preview", async (req, res) => {
   const a = await account(req, res, b.data.accountId);
   if (!a) return;
   try {
-    const { mk, pf } = await evaluate(a, { ...b.data, clientRequestId: "preview-only" });
+    const { mk, pf } = await evaluate(a, b.data);
     if (!mk) { res.status(400).json({ error: "no_symbol" }); return; }
     res.json({ preflight: pf, market: mk });
   } catch (e) { fail(res, e); }
@@ -123,60 +97,8 @@ tradeRouter.post("/orders", async (req, res) => {
   if (!b.success) { res.status(400).json({ error: "bad_request" }); return; }
   const a = await account(req, res, b.data.accountId);
   if (!a) return;
-  if (a.status === "paused") { res.status(409).json({ error: "account_paused" }); return; }
-
-  const claimed = await one<{ id: number }>(
-    `INSERT INTO vk_orders (user_id, account_id, client_request_id, symbol, side, intent, type, qty, status)
-     VALUES ($1, $2, $3, $4, $5, 'open', $6, 0, 'checking') ON CONFLICT (account_id, client_request_id) DO NOTHING RETURNING id`,
-    [user.id, a.id, b.data.clientRequestId, b.data.symbol, b.data.side, b.data.type]);
-  if (!claimed) {
-    const prev = await one("SELECT * FROM vk_orders WHERE account_id = $1 AND client_request_id = $2", [a.id, b.data.clientRequestId]);
-    res.json({ order: prev, repeated: true });
-    return;
-  }
-  const finish = (status: string, extra: Record<string, unknown>) =>
-    one(`UPDATE vk_orders SET status = $2, qty = COALESCE($3, qty), price = COALESCE($4, price), leverage = COALESCE($5, leverage),
-           exchange_order_id = $6, error_code = $7, error_message = $8, preflight = COALESCE($9::jsonb, preflight), updated_at = now()
-         WHERE id = $1 RETURNING *`,
-      [claimed.id, status, extra.qty ?? null, extra.price ?? null, extra.leverage ?? null, extra.exchangeOrderId ?? null,
-        extra.errorCode ?? null, extra.errorMessage ?? null, extra.preflight ? JSON.stringify(extra.preflight) : null]);
-
-  try {
-    const { mk, pf } = await evaluate(a, b.data);
-    if (!mk || !pf) { res.status(400).json({ error: "no_symbol", order: await finish("rejected", { errorCode: "no_symbol" }) }); return; }
-    if (!pf.ok) { res.status(400).json({ error: "preflight_failed", preflight: pf, order: await finish("rejected", { errorCode: pf.errors[0].code, preflight: pf }) }); return; }
-    if (b.data.plan && a.market === "swap") {
-      const errs = planErrors(b.data.plan, b.data.side, pf.price);
-      if (errs.length) { res.status(400).json({ error: "plan_invalid", reason: errs[0], order: await finish("rejected", { errorCode: errs[0], preflight: pf }) }); return; }
-    }
-
-    const ex = clientFor(a);
-    let params: Record<string, unknown> = {};
-    if (a.market === "swap") {
-      if (b.data.marginMode && ex.has?.setMarginMode) {
-        await ex.setMarginMode(b.data.marginMode, b.data.symbol).catch(() => undefined); // "already set" errors are fine
-      }
-      if (ex.has?.setLeverage) {
-        try { await ex.setLeverage(pf.leverage, b.data.symbol, b.data.marginMode ? { marginMode: b.data.marginMode } : {}); }
-        catch (e) { res.status(400).json({ error: "leverage_failed", exchangeError: exchangeError(e), order: await finish("rejected", { errorCode: "leverage_failed", errorMessage: exchangeError(e).message, preflight: pf }) }); return; }
-      }
-      params = modeParams(a.exchange, await isHedged(a.id, ex), b.data.side, false);
-    }
-    const sent = await ex.createOrder(b.data.symbol, b.data.type, orderSide(b.data.side, false), pf.qty, b.data.type === "limit" ? pf.price : undefined, params);
-    if (a.market === "swap" && b.data.plan) {
-      // The engine waits for the fill, then places the stop and takes from the REAL entry price.
-      // If this symbol+side is already managed, the add is picked up as a size increase.
-      await q(`INSERT INTO vk_positions (user_id, account_id, symbol, side, source, source_label, status, plan, entry_order_id, leverage)
-               VALUES ($1, $2, $3, $4, 'terminal', $5, 'pending', $6, $7, $8) ON CONFLICT DO NOTHING`,
-        [user.id, a.id, b.data.symbol, b.data.side, user.lang === "en" ? "Terminal" : "Терминал", JSON.stringify(b.data.plan), String(sent.id), pf.leverage]);
-    }
-    res.json({ order: await finish(sent.status === "closed" ? "filled" : "open", { qty: pf.qty, price: sent.average ?? sent.price ?? pf.price, leverage: pf.leverage, exchangeOrderId: sent.id, preflight: pf }) });
-  } catch (e) {
-    const err = exchangeError(e);
-    // Unknown outcome (timeout/network): the order may be on the exchange. Mark it, never resend.
-    const status = err.code === "network" ? "unknown" : "rejected";
-    res.status(502).json({ error: "exchange_error", exchangeError: err, order: await finish(status, { errorCode: err.code, errorMessage: err.message }) });
-  }
+  const r = await openEntry(a, user, b.data, { kind: "terminal", label: user.lang === "en" ? "Terminal" : "Терминал" });
+  res.status(r.http).json(r.body);
 });
 
 tradeRouter.get("/orders/open", async (req, res) => {
@@ -211,20 +133,9 @@ tradeRouter.post("/positions/close", async (req, res) => {
   if (!a) return;
   if (a.market !== "swap") { res.status(400).json({ error: "not_futures" }); return; }
   try {
-    const snap = await snapshot(a, true);
-    const pos = snap.positions.find((p) => p.symbol === b.data.symbol && p.side === b.data.side);
-    if (!pos) { res.status(404).json({ error: "position_not_found" }); return; }
-    const mk = await marketOf(a, b.data.symbol);
-    const ex = clientFor(a);
-    const contracts = pos.size / (mk?.contractSize || 1);
-    const qty = b.data.percent >= 100 ? contracts : Number(ex.amountToPrecision(b.data.symbol, (contracts * b.data.percent) / 100));
-    // Tell the engine this close is the user's own, so the message names it right.
-    await q(`UPDATE vk_positions SET pending_close_reason = $4 WHERE account_id = $1 AND symbol = $2 AND side = $3 AND status = 'open'`,
-      [a.id, b.data.symbol, b.data.side, b.data.percent >= 100 ? "terminal" : "terminal_partial"]);
-    const sent = await ex.createOrder(b.data.symbol, "market", orderSide(b.data.side, true), qty, undefined, modeParams(a.exchange, await isHedged(a.id, ex), b.data.side, true));
-    await q(`INSERT INTO vk_orders (user_id, account_id, client_request_id, symbol, side, intent, type, qty, status, exchange_order_id)
-             VALUES ($1, $2, $3, $4, $5, 'close', 'market', $6, 'sent', $7)`, [a.user_id, a.id, `close-${Date.now()}`, b.data.symbol, b.data.side, qty, sent.id]);
-    res.json({ ok: true, orderId: sent.id, qty });
+    const r = await closePosition(a, b.data.symbol, b.data.side, b.data.percent, "terminal");
+    if (!r) { res.status(404).json({ error: "position_not_found" }); return; }
+    res.json({ ok: true, ...r });
   } catch (e) { fail(res, e); }
 });
 

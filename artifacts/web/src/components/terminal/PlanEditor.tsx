@@ -7,6 +7,7 @@ export type Plan = {
   takes: Array<Level & { closePct: number }>;
   breakeven: { after: "off" | "tp1" | "pct"; pct?: number };
   trailing: { activationPct: number; callbackPct: number } | null;
+  dca?: { orders: number; stepPct: number; stepMult: number; sizeMult: number } | null;
 };
 
 export const DEFAULT_PLAN: Plan = {
@@ -14,6 +15,7 @@ export const DEFAULT_PLAN: Plan = {
   takes: [{ mode: "pct", value: 3, closePct: 100 }],
   breakeven: { after: "off" },
   trailing: null,
+  dca: null,
 };
 
 const dir = (side: "long" | "short") => (side === "long" ? 1 : -1);
@@ -27,11 +29,17 @@ export function planProblems(plan: Plan, side: "long" | "short", entry: number |
   if (!entry) return out;
   if (plan.stop && dir(side) * (levelPrice(plan.stop, side, entry, true) - entry) >= 0) out.push("plan.stop_wrong_side");
   if (plan.takes.some((t) => dir(side) * (levelPrice(t, side, entry, false) - entry) <= 0)) out.push("plan.take_wrong_side");
+  if (plan.stop && plan.dca) {
+    let dist = 0;
+    for (let i = 0; i < plan.dca.orders; i++) dist += plan.dca.stepPct * Math.pow(plan.dca.stepMult, i);
+    const stopDist = -dir(side) * (levelPrice(plan.stop, side, entry, true) - entry) / entry * 100;
+    if (stopDist <= dist) out.push("plan.stop_before_dca");
+  }
   return out;
 }
 
 /** Stop, takes, break-even, trailing — in % from the entry (or exact prices). */
-export function PlanEditor({ plan, onChange, side, entry, prec }: { plan: Plan; onChange: (p: Plan) => void; side: "long" | "short"; entry: number | null; prec: number }) {
+export function PlanEditor({ plan, onChange, side, entry, prec, showDca = true }: { plan: Plan; onChange: (p: Plan) => void; side: "long" | "short"; entry: number | null; prec: number; showDca?: boolean }) {
   const t = useT();
   const set = (patch: Partial<Plan>) => onChange({ ...plan, ...patch });
   const sum = plan.takes.reduce((s, x) => s + x.closePct, 0);
@@ -103,6 +111,24 @@ export function PlanEditor({ plan, onChange, side, entry, prec }: { plan: Plan; 
           </div>
         )}
       </div>
+      {/* DCA */}
+      {showDca && (
+        <div>
+          <div className="mb-1 flex items-center justify-between"><span>{t("plan.dca")}</span>
+            <Switch checked={Boolean(plan.dca)} onChange={(v) => set({ dca: v ? { orders: 2, stepPct: 1.5, stepMult: 1, sizeMult: 1 } : null })} /></div>
+          {plan.dca && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-muted">{t("plan.dcaOrders")}<NumBox value={plan.dca.orders} onChange={(v) => set({ dca: { ...plan.dca!, orders: Math.min(10, Math.max(1, Math.round(v))) } })} /></label>
+                <label className="text-xs text-muted">{t("plan.dcaStep")}<NumBox value={plan.dca.stepPct} suffix="%" onChange={(v) => set({ dca: { ...plan.dca!, stepPct: v } })} /></label>
+                <label className="text-xs text-muted">{t("plan.dcaStepMult")}<NumBox value={plan.dca.stepMult} suffix="×" onChange={(v) => set({ dca: { ...plan.dca!, stepMult: Math.min(3, Math.max(1, v)) } })} /></label>
+                <label className="text-xs text-muted">{t("plan.dcaSizeMult")}<NumBox value={plan.dca.sizeMult} suffix="×" onChange={(v) => set({ dca: { ...plan.dca!, sizeMult: Math.min(3, Math.max(0.5, v)) } })} /></label>
+              </div>
+              <div className="mt-1 text-xs text-muted">{t("plan.dcaHint")}</div>
+            </>
+          )}
+        </div>
+      )}
       {problems.map((k) => <div key={k} className="text-xs text-down">{t(k)}</div>)}
     </div>
   );

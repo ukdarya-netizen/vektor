@@ -11,6 +11,13 @@ export const planSchema = z.object({
   takes: z.array(level.extend({ closePct: z.number().min(1).max(100) })).max(10).default([]),
   breakeven: z.object({ after: z.enum(["off", "tp1", "pct"]), pct: z.number().positive().optional() }).default({ after: "off" }),
   trailing: z.object({ activationPct: z.number().min(0), callbackPct: z.number().positive().max(50) }).nullable().default(null),
+  /** Safety orders (averaging): limit adds against the position at growing distances. */
+  dca: z.object({
+    orders: z.number().int().min(1).max(10),
+    stepPct: z.number().positive().max(50),
+    stepMult: z.number().min(1).max(3).default(1),
+    sizeMult: z.number().min(0.5).max(3).default(1),
+  }).nullable().default(null),
 }).superRefine((p, ctx) => {
   const sum = p.takes.reduce((s, t) => s + t.closePct, 0);
   if (sum > 100 + 1e-9) ctx.addIssue({ code: "custom", message: "takes_over_100" });
@@ -87,11 +94,25 @@ export function marginForStop(o: { side: Side; entry: number; stop: number; noti
 export const liqBeforeStop = (side: Side, liq: number | null, stop: number | null) =>
   liq !== null && stop !== null && liq > 0 && (side === "long" ? liq >= stop : liq <= stop);
 
-/** Validates a plan against the entry: stop on the loss side, takes on the profit side. */
+/** Safety order levels: distance d_i = step × (1 + m + … + m^(i−1)), size = base × sizeMult^i. */
+export function dcaLevels(plan: Plan, side: Side, entry: number, baseQty: number): Array<{ n: number; price: number; qty: number; distPct: number }> {
+  if (!plan.dca) return [];
+  const out = [];
+  let dist = 0;
+  for (let i = 1; i <= plan.dca.orders; i++) {
+    dist += plan.dca.stepPct * Math.pow(plan.dca.stepMult, i - 1);
+    out.push({ n: i, price: atPct(side, entry, -dist), qty: baseQty * Math.pow(plan.dca.sizeMult, i), distPct: dist });
+  }
+  return out;
+}
+
+/** Validates a plan against the entry: stop on the loss side, takes on the profit side, stop beyond the last safety order. */
 export function planErrors(plan: Plan, side: Side, entry: number): string[] {
   const errs: string[] = [];
   const s = stopPrice(plan, side, entry);
   if (s !== null && movePct(side, entry, s) >= 0) errs.push("stop_wrong_side");
+  const lastDca = dcaLevels(plan, side, entry, 1).at(-1);
+  if (s !== null && lastDca && movePct(side, entry, s) >= -lastDca.distPct) errs.push("stop_before_dca");
   for (const t of takeLevels(plan, side, entry)) if (movePct(side, entry, t.price) <= 0) { errs.push("take_wrong_side"); break; }
   return errs;
 }

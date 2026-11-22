@@ -110,7 +110,19 @@ export const NOT_OPENED: Record<string, Msg> = {
   position_mode: both("на бирже не тот режим позиций (нужен раздельный / Hedge) — переключите в настройках фьючерсов биржи", "wrong position mode on the exchange (Hedge needed) — switch it in the exchange futures settings"),
   liquidation_before_stop: both("ликвидация оказалась бы раньше стопа", "liquidation would come before the stop"),
   rejected: both("биржа отклонила ордер", "the exchange rejected the order"),
-  source_disabled: both("торговля по этому источнику выключена", "trading from this source is turned off"),
+  source_disabled: both("бот выключен", "the bot is turned off"),
+  side_disabled: both("эта сторона (лонг/шорт) в боте выключена", "this side (long/short) is turned off in the bot"),
+  opposite_open: both("открыта позиция в обратную сторону", "a position in the opposite direction is open"),
+  kill_switch: both("включён аварийный выключатель — новые входы запрещены", "the kill switch is on — no new entries"),
+  max_leverage: both("плечо выше вашего лимита", "leverage is above your limit"),
+  max_margin: both("маржа выше вашего лимита на сделку", "margin is above your per-trade limit"),
+  max_positions: both("достигнут ваш лимит открытых позиций", "your open-positions limit is reached"),
+  daily_loss: both("достигнут ваш дневной лимит убытка", "your daily loss limit is reached"),
+  parse_error: both("сигнал не удалось разобрать", "the signal could not be parsed"),
+  account_paused: both("счёт на паузе", "the account is paused"),
+  plan_invalid: both("стоп или тейк по неверную сторону от цены входа", "stop or take-profit on the wrong side of the entry"),
+  leverage_failed: both("биржа не дала поставить плечо", "the exchange refused the leverage"),
+  exchange_error: both("ошибка биржи", "exchange error"),
 };
 
 export const T = {
@@ -149,6 +161,11 @@ export const T = {
       `Entry ${fmt(o.entry)} → exit ${fmt(o.exit)}${o.parts > 1 ? ` (average exit over all parts ${fmt(o.avgExit)})` : ""}`,
       o.result.en + (o.hadPartials ? " — partial closes included" : "")]),
   ),
+  dcaFilled: (h: string, ns: number[], avg: number, size: number): Msg => both(
+    join([h, `Сработал страховочный ордер ${ns.join(", ")} — позиция усреднена.`, `Средний вход ${fmt(avg)}, объём ${fmt(size)}. Тейки пересчитаны от новой средней, стоп на месте.`]),
+    join([h, `Safety order ${ns.join(", ")} filled — position averaged.`, `Average entry ${fmt(avg)}, size ${fmt(size)}. Take-profits recalculated from the new average, stop unchanged.`]),
+  ),
+  signalReceived: (bot: string, text: string): Msg => both(`📥 ${bot}: сигнал получен — ${text}`, `📥 ${bot}: signal received — ${text}`),
   reconcileFixed: (h: string, what: Msg): Msg => both(join([h, "Сверка с биржей: найдено расхождение и исправлено.", what.ru]), join([h, "Exchange reconciliation: a mismatch was found and fixed.", what.en])),
   exchangeProblem: (label: string, code: string): Msg => {
     const why: Record<string, Msg> = {

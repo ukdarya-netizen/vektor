@@ -5,23 +5,20 @@ import { Redirect, Route, Router, Switch } from "wouter";
 import { api, ApiError, type User } from "@/lib/api";
 import { browserLang, LangProvider, useT, type Lang } from "@/lib/i18n";
 import { Layout } from "@/components/Layout";
-import { Card, Empty, Spinner } from "@/components/ui";
+import { Spinner } from "@/components/ui";
 import { Login } from "@/pages/Login";
 import { Onboarding } from "@/pages/Onboarding";
 import { PortfolioPage } from "@/pages/Portfolio";
 import { PositionsPage } from "@/pages/Positions";
 import { SettingsPage } from "@/pages/Settings";
 import { TerminalPage } from "@/pages/Terminal";
+import { SignalsPage } from "@/pages/Signals";
+import { JournalPage } from "@/pages/Journal";
 import "./index.css";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: true } },
 });
-
-function Soon({ text }: { text: string }) {
-  const t = useT();
-  return <Card><Empty title={t("soon.title")} text={text} /></Card>;
-}
 
 function App() {
   const client = useQueryClient();
@@ -56,9 +53,9 @@ function App() {
           <Switch>
             <Route path="/terminal"><TerminalPage /></Route>
             <Route path="/positions"><PositionsPage /></Route>
-            <Route path="/signals"><SoonSignals /></Route>
+            <Route path="/signals"><SignalsPage /></Route>
             <Route path="/portfolio"><PortfolioPage /></Route>
-            <Route path="/journal"><SoonJournal /></Route>
+            <Route path="/journal"><JournalPage /></Route>
             <Route path="/settings/:tab?"><SettingsPage user={user} onUserChange={reloadMe} /></Route>
             <Route><Redirect to="/terminal" /></Route>
           </Switch>
@@ -68,8 +65,6 @@ function App() {
   );
 }
 
-const SoonSignals = () => { const t = useT(); return <Soon text={t("soon.signals")} />; };
-const SoonJournal = () => { const t = useT(); return <Soon text={t("soon.journal")} />; };
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
