@@ -1,6 +1,6 @@
 /**
  * Subscription plans and their limits. Adjust numbers here; everything else reads them.
- * New users get a 14-day trial with Pro limits. An expired plan falls back to Free:
+ * New users get a 7-day trial with Pro limits. An expired plan falls back to Free:
  * nothing already open is touched (positions stay managed); only NEW things beyond Free are refused.
  */
 import { one } from "../db";

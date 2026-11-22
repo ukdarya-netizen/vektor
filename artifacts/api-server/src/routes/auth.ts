@@ -121,7 +121,7 @@ authRouter.post("/verify", async (req, res) => {
   await q("UPDATE vk_email_codes SET used_at = now() WHERE id = $1", [row.id]);
   const lang = req.body?.lang === "en" ? "en" : "ru";
   const user = await one<{ id: number; created: boolean }>(
-    `INSERT INTO vk_users (email, lang, last_login_at, plan, plan_until) VALUES ($1, $2, now(), 'trial', now() + interval '14 days')
+    `INSERT INTO vk_users (email, lang, last_login_at, plan, plan_until) VALUES ($1, $2, now(), 'trial', now() + interval '7 days')
      ON CONFLICT (email) DO UPDATE SET last_login_at = now()
      RETURNING id, (xmax = 0) AS created`, [normEmail(email), lang]);
   const u2 = await one<{ totp_enabled: boolean }>("SELECT totp_enabled FROM vk_users WHERE id = $1", [user!.id]);
